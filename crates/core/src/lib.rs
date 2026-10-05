@@ -5,3 +5,4 @@ pub mod model;
 pub mod placement;
 pub mod port_grid;
 pub mod edit;
+pub mod editor;
