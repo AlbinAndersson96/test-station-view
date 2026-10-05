@@ -72,12 +72,18 @@ pub fn plan_rename_rack(doc: &Document, rack_id: RackId, name: Name) -> Result<P
 
 pub fn plan_set_rack_height(
     doc: &Document,
+    limits: &Limits,
     rack_id: RackId,
     height_u: u32,
 ) -> Result<Plan, Rejection> {
     let index = doc.rack_index(rack_id).ok_or(Rejection::NotFound)?;
     if height_u == 0 {
         return Err(Rejection::ZeroHeight);
+    }
+    if height_u > limits.max_rack_height_u {
+        return Err(Rejection::HeightAboveLimit {
+            max: limits.max_rack_height_u,
+        });
     }
     if doc.racks[index]
         .devices

@@ -140,3 +140,17 @@ fn invariant_violations_are_reported() {
         "Rack 'Rack1': devices 'A' and 'B' overlap at U2"
     );
 }
+
+#[test]
+fn absurd_rack_heights_are_rejected_on_import() {
+    let d = doc(vec![rack(
+        "Rack1",
+        u32::MAX,
+        vec![device("A", u32::MAX, 1)],
+    )]);
+    let err = from_json(&to_json(&d), &limits()).unwrap_err();
+    assert!(matches!(
+        err,
+        LoadError::Invalid(ValidationError::RackTooTall { .. })
+    ));
+}

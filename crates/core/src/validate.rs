@@ -17,6 +17,8 @@ pub enum ValidationError {
     DuplicateRackName(String),
     #[error("Rack '{rack}': the height must be at least 1U")]
     RackZeroHeight { rack: String },
+    #[error("Rack '{rack}': the height must be at most {max}U")]
+    RackTooTall { rack: String, max: u32 },
     #[error("Rack '{rack}': the device name '{name}' is used more than once")]
     DuplicateDeviceName { rack: String, name: String },
     #[error("Rack '{rack}': device '{device}' must be at least 1U high")]
@@ -88,6 +90,12 @@ fn check_rack(rack: &Rack, limits: &Limits) -> Result<(), ValidationError> {
     let rack_name = rack.name.to_string();
     if rack.height_u == 0 {
         return Err(ValidationError::RackZeroHeight { rack: rack_name });
+    }
+    if rack.height_u > limits.max_rack_height_u {
+        return Err(ValidationError::RackTooTall {
+            rack: rack_name,
+            max: limits.max_rack_height_u,
+        });
     }
     if let Some(name) = first_duplicate(rack.devices.iter().map(|d| &d.name)) {
         return Err(ValidationError::DuplicateDeviceName {

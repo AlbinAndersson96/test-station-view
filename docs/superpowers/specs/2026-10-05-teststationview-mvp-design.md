@@ -91,6 +91,8 @@ At most about 5 racks per document, 10 devices per rack and 10 ports per device.
 - **Add rack:** an "Add rack" button below the tree appends a rack at the end of the row. Its height
   is the height of the last rack in the row (42U if there are no racks). Its name is the first free
   `RackN` (`Rack1`, `Rack2`, …).
+- **Height limit:** at most `max_rack_height_u` (100U in the MVP, in `Limits`); higher values are
+  rejected by edits and by import validation.
 - **Height change:** rejected if any device's top U would exceed the new height. Racks never grow
   automatically.
 - **Removal:** removing a rack removes all its devices and ports. If the rack contains any devices,
@@ -191,7 +193,7 @@ teststationview/
   Port     { id, name: Name, row: u32, col: u32, kind: PortKind }
   DeviceKind { AdHoc }          // reserved for a future catalog
   PortKind   { Unspecified }    // reserved for future connector types
-  Limits   { name_max_len: 10, port_rows_per_u: 1, port_cols: 5 }
+  Limits   { name_max_len: 10, port_rows_per_u: 1, port_cols: 5, max_rack_height_u: 100 }
   ```
 - **Newtypes:** `Name` and `DocumentName` can only be constructed through validation (§3.1, §3.2).
 - **Plans:** each edit is a function that computes a complete candidate document without mutating

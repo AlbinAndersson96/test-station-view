@@ -54,6 +54,8 @@ pub enum Rejection {
     NoRoomForPorts,
     #[error("a port can only be placed on its own device")]
     WrongDevice,
+    #[error("the height must be at most {max}U")]
+    HeightAboveLimit { max: u32 },
 }
 
 impl From<PlacementError> for Rejection {

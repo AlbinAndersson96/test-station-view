@@ -177,3 +177,16 @@ fn ports_must_not_share_a_cell() {
         })
     );
 }
+
+#[test]
+fn rack_height_must_not_exceed_the_limit() {
+    assert_eq!(check(&doc(vec![rack("R", 100, vec![])])), Ok(()));
+    let d = doc(vec![rack("R", u32::MAX, vec![device("A", u32::MAX, 1)])]);
+    assert_eq!(
+        check(&d),
+        Err(ValidationError::RackTooTall {
+            rack: s("R"),
+            max: 100
+        })
+    );
+}

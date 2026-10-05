@@ -64,7 +64,7 @@ fn unknown_rack_is_not_found() {
         Rejection::NotFound
     );
     assert_eq!(
-        plan_set_rack_height(&d, RackId::new(), 10).unwrap_err(),
+        plan_set_rack_height(&d, &limits(), RackId::new(), 10).unwrap_err(),
         Rejection::NotFound
     );
 }
@@ -103,11 +103,15 @@ fn set_rack_height_rejects_cutting_off_equipment() {
     let d = doc(vec![rack("R", 42, vec![device("PSU", 40, 2)])]);
     let id = d.racks[0].id;
     assert_eq!(
-        plan_set_rack_height(&d, id, 41).unwrap().document.racks[0].height_u,
+        plan_set_rack_height(&d, &limits(), id, 41)
+            .unwrap()
+            .document
+            .racks[0]
+            .height_u,
         41
     );
     assert_eq!(
-        plan_set_rack_height(&d, id, 40).unwrap_err(),
+        plan_set_rack_height(&d, &limits(), id, 40).unwrap_err(),
         Rejection::EquipmentOutside
     );
 }
@@ -116,7 +120,7 @@ fn set_rack_height_rejects_cutting_off_equipment() {
 fn set_rack_height_rejects_zero() {
     let d = doc(vec![rack("R", 42, vec![])]);
     assert_eq!(
-        plan_set_rack_height(&d, d.racks[0].id, 0).unwrap_err(),
+        plan_set_rack_height(&d, &limits(), d.racks[0].id, 0).unwrap_err(),
         Rejection::ZeroHeight
     );
 }
@@ -141,5 +145,23 @@ fn rejection_messages_are_sentences() {
     assert_eq!(
         Rejection::NameTaken("DMM".into()).to_string(),
         "the name 'DMM' is already used here"
+    );
+}
+
+#[test]
+fn set_rack_height_rejects_heights_above_the_limit() {
+    let d = doc(vec![rack("R", 42, vec![])]);
+    let id = d.racks[0].id;
+    assert_eq!(
+        plan_set_rack_height(&d, &limits(), id, 100)
+            .unwrap()
+            .document
+            .racks[0]
+            .height_u,
+        100
+    );
+    assert_eq!(
+        plan_set_rack_height(&d, &limits(), id, 101).unwrap_err(),
+        Rejection::HeightAboveLimit { max: 100 }
     );
 }
