@@ -68,7 +68,7 @@ with native tests; browser code is a thin layer.**
 
 The design spec (`docs/superpowers/specs/`) is the authority on behaviour. The three plans in
 `docs/superpowers/plans/` record how the MVP was built and the decisions taken beyond the spec.
-Deferred minor review findings are in `docs/known-issues.md`.
+Deferred minor review findings are in `docs/known-issues.md`. Planned directions and their extension points (`DeviceKind`, `PortKind`, `DocumentStore`, `Limits`, file-format migration) are in `docs/future-work.md`. Read it before extending the model or storage.
 
 ## Workflow
 

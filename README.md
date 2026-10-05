@@ -79,6 +79,9 @@ The design document and the three implementation plans that built the MVP are in
 
 Changes go on a feature branch and reach `develop` through a pull request.
 
-## Known issues
+## Known issues and future work
 
-Small deferred review findings are listed in [`docs/known-issues.md`](docs/known-issues.md).
+- Small deferred review findings: [`docs/known-issues.md`](docs/known-issues.md).
+- What was left out of the MVP, planned directions (equipment catalogue, connector types,
+  cables, shared backend) and where the code already prepares for them:
+  [`docs/future-work.md`](docs/future-work.md).
