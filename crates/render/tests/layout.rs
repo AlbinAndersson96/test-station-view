@@ -99,3 +99,39 @@ fn aabb_helpers() {
         (Vec3::splat(-1.0), Vec3::new(2.0, 4.0, 6.0))
     );
 }
+
+#[test]
+fn units_box_matches_a_device_at_the_same_place() {
+    let d = device("D", 7, 3);
+    assert_eq!(units_box(2, 7, 3), device_box(2, &d));
+}
+
+#[test]
+fn object_bounds_finds_racks_devices_and_ports() {
+    use tsv_core::edit::ObjectId;
+    let p = port("P", 0, 1);
+    let pid = p.id;
+    let dev = with_ports(device("D", 4, 2), vec![p]);
+    let did = dev.id;
+    let d = doc(vec![
+        rack("A", 10, vec![]),
+        rack("B", 10, vec![dev.clone()]),
+    ]);
+    let rid = d.racks[0].id;
+    let l = limits();
+    assert_eq!(
+        object_bounds(&d, &l, ObjectId::Device(did)),
+        Some(device_box(1, &dev))
+    );
+    let rack_b = object_bounds(&d, &l, ObjectId::Rack(rid)).unwrap();
+    assert_close(rack_b.size().x, RACK_WIDTH_MM);
+    let port_b = object_bounds(&d, &l, ObjectId::Port(pid)).unwrap();
+    assert_eq!(
+        port_b,
+        port_marker_box(1, &dev, Cell { row: 0, col: 1 }, &l)
+    );
+    assert_eq!(
+        object_bounds(&d, &l, ObjectId::Device(tsv_core::ids::DeviceId::new())),
+        None
+    );
+}
