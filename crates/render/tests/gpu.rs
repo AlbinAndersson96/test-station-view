@@ -18,6 +18,14 @@ impl TextRasterizer for SolidText {
     }
 }
 
+/// Serialises the GPU tests: creating Vulkan devices concurrently in one process occasionally
+/// segfaults inside Mesa's llvmpipe driver (reproduced with plain wgpu, no app code).
+static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn gpu_lock() -> std::sync::MutexGuard<'static, ()> {
+    GPU.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn renderer() -> Option<Renderer> {
     match pollster::block_on(Renderer::new_offscreen(SIZE, SIZE)) {
         Ok(r) => Some(r),
@@ -64,6 +72,7 @@ fn background() -> [u8; 4] {
 
 #[test]
 fn draws_a_shaded_box_on_the_background() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     let scene = Scene {
         opaque: vec![red_box()],
@@ -80,6 +89,7 @@ fn draws_a_shaded_box_on_the_background() {
 
 #[test]
 fn selection_draws_a_glow_just_outside_the_box() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     let plain = Scene {
         opaque: vec![red_box()],
@@ -105,6 +115,7 @@ fn selection_draws_a_glow_just_outside_the_box() {
 
 #[test]
 fn labels_show_their_texture() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     let label = Label {
         text: "DMM".into(),
@@ -125,6 +136,7 @@ fn labels_show_their_texture() {
 
 #[test]
 fn ghost_is_blended_over_the_scene() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     let ghost = BoxInstance {
         aabb: Aabb::new(
@@ -146,6 +158,7 @@ fn ghost_is_blended_over_the_scene() {
 
 #[test]
 fn resize_changes_the_output_size() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     r.resize(32, 16);
     assert_eq!(r.size(), (32, 16));
@@ -156,6 +169,7 @@ fn resize_changes_the_output_size() {
 
 #[test]
 fn zero_size_is_clamped_to_one_pixel() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     r.resize(0, 0);
     assert_eq!(r.size(), (1, 1));
@@ -166,6 +180,7 @@ fn zero_size_is_clamped_to_one_pixel() {
 
 #[test]
 fn offscreen_frames_report_that_they_were_drawn() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     assert_eq!(
         r.render(&Scene::default(), &camera(), &mut SolidText),
@@ -175,6 +190,7 @@ fn offscreen_frames_report_that_they_were_drawn() {
 
 #[test]
 fn resize_is_clamped_to_the_device_texture_limit() {
+    let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };
     r.resize(100_000, 10);
     assert_eq!(r.size(), (r.max_dimension(), 10));
