@@ -1,9 +1,11 @@
 //! Edit operations. Each `plan_*` function computes a complete candidate document
 //! without touching its input; a `Rejection` means nothing changes.
 
+mod device;
 mod document;
 mod rack;
 
+pub use device::*;
 pub use document::*;
 pub use rack::*;
 
