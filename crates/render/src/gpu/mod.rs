@@ -9,7 +9,7 @@ use glam::Vec3;
 
 use crate::camera::OrbitCamera;
 use crate::scene::{BACKGROUND, BoxInstance, Label, Scene};
-use crate::text::{TextRasterizer, label_texture_size};
+use crate::text::{TextRasterizer, label_texture_size, mip_chain};
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
@@ -34,6 +34,15 @@ impl std::fmt::Display for RenderError {
 }
 
 impl std::error::Error for RenderError {}
+
+/// Outcome of `Renderer::render`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameStatus {
+    Drawn,
+    /// The surface was briefly unavailable (resized, hidden, reconfigured); nothing was drawn.
+    /// Request another frame.
+    Skipped,
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -169,6 +178,8 @@ impl Renderer {
             .await
             .map_err(|e| RenderError::NoAdapter(e.to_string()))?;
         let (device, queue) = request_device(&adapter).await?;
+        let max = device.limits().max_texture_dimension_2d;
+        let (width, height) = (width.min(max), height.min(max));
         let mut config = surface
             .get_default_config(&adapter, width, height)
             .ok_or_else(|| RenderError::Surface("canvas not supported by adapter".into()))?;
@@ -273,6 +284,7 @@ impl Renderer {
             label: Some("label"),
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
 
@@ -459,9 +471,16 @@ impl Renderer {
         self.lost.load(Ordering::SeqCst)
     }
 
-    /// Resizes the drawing surface (canvas pixel size).
+    /// Largest width or height the drawing surface can have on this device.
+    pub fn max_dimension(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
+    /// Resizes the drawing surface (canvas pixel size), clamped to `1..=max_dimension()`.
+    /// The app must set the canvas's pixel size to `size()` afterwards so they stay equal.
     pub fn resize(&mut self, width: u32, height: u32) {
-        let (width, height) = (width.max(1), height.max(1));
+        let max = self.max_dimension();
+        let (width, height) = (width.clamp(1, max), height.clamp(1, max));
         if (width, height) == (self.width, self.height) {
             return;
         }
@@ -483,27 +502,27 @@ impl Renderer {
         self.outline_bind = create_outline_bind(&self.device, &self.outline_layout, &self.mask);
     }
 
-    /// Draws one frame. Skips the frame (Ok) when the surface is temporarily unavailable.
+    /// Draws one frame, or reports `Skipped` when the surface is temporarily unavailable.
     pub fn render(
         &mut self,
         scene: &Scene,
         camera: &OrbitCamera,
         text: &mut dyn TextRasterizer,
-    ) -> Result<(), RenderError> {
+    ) -> Result<FrameStatus, RenderError> {
         let surface_texture = match &self.target {
             Target::Surface { surface, config } => match surface.get_current_texture() {
                 wgpu::CurrentSurfaceTexture::Success(t)
                 | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Some(t),
                 wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                     surface.configure(&self.device, config);
-                    return Ok(());
+                    return Ok(FrameStatus::Skipped);
                 }
                 wgpu::CurrentSurfaceTexture::Validation => {
                     return Err(RenderError::Surface(
                         "validation error acquiring frame".into(),
                     ));
                 }
-                _ => return Ok(()),
+                _ => return Ok(FrameStatus::Skipped),
             },
             Target::Offscreen { .. } => None,
         };
@@ -643,7 +662,7 @@ impl Renderer {
         if let Some(t) = surface_texture {
             self.queue.present(t);
         }
-        Ok(())
+        Ok(FrameStatus::Drawn)
     }
 
     /// Reads the offscreen target back as tightly packed RGBA8 rows (top row first).
@@ -754,36 +773,42 @@ impl Renderer {
     }
 
     fn create_label_bind(&self, pixels: &[u8], width: u32, height: u32) -> wgpu::BindGroup {
-        let size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
+        let levels = mip_chain(pixels, width, height);
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("label"),
-            size,
-            mip_level_count: 1,
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: levels.len() as u32,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        self.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width * 4),
-                rows_per_image: Some(height),
-            },
-            size,
-        );
+        for (level, (w, h, data)) in levels.iter().enumerate() {
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: level as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(w * 4),
+                    rows_per_image: Some(*h),
+                },
+                wgpu::Extent3d {
+                    width: *w,
+                    height: *h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("label"),

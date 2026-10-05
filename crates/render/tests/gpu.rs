@@ -2,7 +2,7 @@
 
 use glam::{Vec2, Vec3};
 use tsv_render::camera::OrbitCamera;
-use tsv_render::gpu::Renderer;
+use tsv_render::gpu::{FrameStatus, Renderer};
 use tsv_render::layout::{Aabb, FaceRect};
 use tsv_render::scene::{BACKGROUND, BoxInstance, Label, Scene};
 use tsv_render::text::TextRasterizer;
@@ -162,4 +162,24 @@ fn zero_size_is_clamped_to_one_pixel() {
     r.render(&Scene::default(), &camera(), &mut SolidText)
         .unwrap();
     assert_eq!(r.read_pixels().unwrap().len(), 4);
+}
+
+#[test]
+fn offscreen_frames_report_that_they_were_drawn() {
+    let Some(mut r) = renderer() else { return };
+    assert_eq!(
+        r.render(&Scene::default(), &camera(), &mut SolidText),
+        Ok(FrameStatus::Drawn)
+    );
+}
+
+#[test]
+fn resize_is_clamped_to_the_device_texture_limit() {
+    let Some(mut r) = renderer() else { return };
+    r.resize(100_000, 10);
+    assert_eq!(r.size(), (r.max_dimension(), 10));
+    assert_eq!(
+        r.render(&Scene::default(), &camera(), &mut SolidText),
+        Ok(FrameStatus::Drawn)
+    );
 }

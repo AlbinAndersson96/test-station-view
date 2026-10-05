@@ -175,3 +175,14 @@ fn moving_devices_are_drawn_at_their_displayed_position() {
     let drawn = s.opaque.last().unwrap();
     assert_close(drawn.aabb.min.y, device_box(0, &dev).min.y - 10.0);
 }
+
+#[test]
+fn motion_still_eases_after_an_idle_period() {
+    let id = ObjectId::Device(tsv_core::ids::DeviceId::new());
+    let mut m = Motion::default();
+    m.update(&[(id, Vec3::ZERO)], 0.016);
+    assert!(
+        m.update(&[(id, Vec3::new(100.0, 0.0, 0.0))], 2.0),
+        "a long gap since the last frame must not skip the animation"
+    );
+}

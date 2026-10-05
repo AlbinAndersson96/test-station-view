@@ -16,6 +16,32 @@ pub fn label_texture_size(width_mm: f32, height_mm: f32) -> (u32, u32) {
     (px(width_mm), px(height_mm))
 }
 
+/// The full mip chain of an RGBA8 image, level 0 first, each level a 2×2 box filter of the
+/// previous one (odd edges are dropped), down to 1 × 1. Lets labels stay legible when they are
+/// drawn much smaller than their texture.
+pub fn mip_chain(pixels: &[u8], width: u32, height: u32) -> Vec<(u32, u32, Vec<u8>)> {
+    let mut levels = vec![(width, height, pixels.to_vec())];
+    while let Some((w, h, src)) = levels.last().filter(|(w, h, _)| *w > 1 || *h > 1) {
+        let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+        let mut dst = Vec::with_capacity((nw * nh * 4) as usize);
+        for y in 0..nh {
+            for x in 0..nw {
+                for c in 0..4 {
+                    let mut sum = 0u32;
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                        let sx = (2 * x + dx).min(w - 1);
+                        let sy = (2 * y + dy).min(h - 1);
+                        sum += u32::from(src[((sy * w + sx) * 4 + c) as usize]);
+                    }
+                    dst.push((sum / 4) as u8);
+                }
+            }
+        }
+        levels.push((nw, nh, dst));
+    }
+    levels
+}
+
 /// Rasteriser using the browser's 2D canvas text engine.
 #[cfg(target_arch = "wasm32")]
 pub struct CanvasTextRasterizer {

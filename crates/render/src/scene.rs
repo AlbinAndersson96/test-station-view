@@ -32,6 +32,9 @@ pub const GHOST_INVALID: Rgb = Rgb {
 pub const GHOST_ALPHA: f32 = 0.45;
 /// Time for moved objects to (visually) reach their new position.
 pub const MOTION_SECONDS: f32 = 0.12;
+/// Longest time step one `Motion::update` applies, so the first frame after an idle period
+/// still eases instead of jumping straight to the target.
+pub const MAX_MOTION_STEP_S: f32 = 1.0 / 30.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BoxInstance {
@@ -127,7 +130,7 @@ impl Motion {
     /// Returns `true` while anything is still moving.
     pub fn update(&mut self, targets: &[(ObjectId, Vec3)], dt_s: f32) -> bool {
         let rate = 3.0 / MOTION_SECONDS;
-        let blend = 1.0 - (-rate * dt_s.max(0.0)).exp();
+        let blend = 1.0 - (-rate * dt_s.clamp(0.0, MAX_MOTION_STEP_S)).exp();
         let mut moving = false;
         let mut next = HashMap::with_capacity(targets.len());
         for &(id, target) in targets {
