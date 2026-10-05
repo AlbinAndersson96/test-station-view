@@ -3,10 +3,12 @@
 
 mod device;
 mod document;
+mod port;
 mod rack;
 
 pub use device::*;
 pub use document::*;
+pub use port::*;
 pub use rack::*;
 
 use crate::ids::{DeviceId, PortId, RackId};
