@@ -186,3 +186,28 @@ fn motion_still_eases_after_an_idle_period() {
         "a long gap since the last frame must not skip the animation"
     );
 }
+
+#[test]
+fn selecting_a_device_shows_all_its_port_names() {
+    let d = with_ports(
+        device("D", 1, 1),
+        vec![port("CH1", 0, 0), port("CH2", 0, 1)],
+    );
+    let did = d.id;
+    let other = with_ports(device("E", 5, 1), vec![port("X1", 0, 0)]);
+    let doc = doc(vec![rack("R", 10, vec![d, other])]);
+    let l = limits();
+    let s = build_scene(
+        &SceneInput {
+            selection: Some(ObjectId::Device(did)),
+            ..input(&doc, &l)
+        },
+        &Motion::default(),
+    );
+    let shown = texts(&s);
+    assert!(
+        shown.contains(&"CH1") && shown.contains(&"CH2"),
+        "{shown:?}"
+    );
+    assert!(!shown.contains(&"X1"), "other devices' ports stay hidden");
+}

@@ -1,0 +1,72 @@
+:root {
+  --bg: #eceff3;
+  --panel: #ffffff;
+  --text: #1f2933;
+  --muted: #66727f;
+  --line: #d5dae1;
+  --accent: #2463eb;
+  --accent-text: #ffffff;
+  --selected: #dbe7ff;
+  --danger: #c62828;
+  --error: #b42318;
+  --glow: #ffa600;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); }
+button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--text); cursor: pointer; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.danger { background: var(--danger); border-color: var(--danger); }
+input { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; width: 100%; }
+input[type="color"] { padding: 0; height: 28px; }
+
+.splash { display: grid; place-content: center; height: 100%; text-align: center; padding: 16px; }
+
+.app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+.toolbar { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.app-name { font-weight: 600; margin-right: 12px; }
+.separator { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+
+.sidebar { overflow-y: auto; background: var(--bg); border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+.panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 6px; }
+.tree-panel { max-height: 45vh; overflow-y: auto; }
+
+.tree { list-style: none; margin: 0; padding: 0; }
+.tree-row { display: flex; justify-content: space-between; gap: 8px; padding-top: 3px; padding-bottom: 3px; padding-right: 6px; border-radius: 4px; cursor: default; user-select: none; }
+.tree-row:hover { background: var(--bg); }
+.tree-row.selected { background: var(--selected); }
+.tree-detail { color: var(--muted); }
+.add-rack { margin-top: 6px; width: 100%; }
+
+.field { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 6px; margin: 4px 0; }
+.field-error { color: var(--error); font-size: 12px; margin: 2px 0 4px 96px; }
+.handle { margin-top: 6px; padding: 8px; text-align: center; border: 1px dashed var(--accent); border-radius: 6px; color: var(--accent); cursor: grab; user-select: none; touch-action: none; }
+.handle.disabled { border-color: var(--line); color: var(--muted); cursor: not-allowed; }
+
+.view { position: relative; min-width: 0; min-height: 0; }
+.viewport { position: absolute; inset: 0; }
+.viewport canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.trash { position: absolute; right: 16px; bottom: 16px; padding: 18px 22px; border: 2px dashed var(--danger); border-radius: 8px; background: rgba(255, 255, 255, 0.85); color: var(--danger); display: none; pointer-events: none; }
+.trash.visible { display: block; }
+.trash.hot { background: var(--danger); color: #fff; }
+.banner { position: absolute; left: 16px; right: 16px; top: 12px; padding: 8px 12px; background: #fff4e5; border: 1px solid #f0b55e; border-radius: 6px; }
+
+.context-menu { position: fixed; z-index: 10; display: flex; flex-direction: column; min-width: 120px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); padding: 4px; }
+.context-menu button { border: none; text-align: left; }
+.context-menu button:hover { background: var(--bg); }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); display: grid; place-items: center; z-index: 20; padding: 16px; }
+.modal { background: var(--panel); border-radius: 8px; padding: 16px 20px; max-width: 460px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25); }
+.modal h2 { margin: 0 0 8px; font-size: 16px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.expander { border: none; background: none; padding: 0 4px 0 0; width: 16px; color: var(--muted); }

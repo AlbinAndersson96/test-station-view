@@ -160,3 +160,14 @@ fn pointer_on_the_far_edge_of_the_face_uses_the_last_cell() {
     let t = port_drop_target(&doc, &limits(), did, &ray_at(face.max.x, face.max.y)).unwrap();
     assert_eq!(t.cell, Cell { row: 0, col: 4 });
 }
+
+#[test]
+fn pick_hit_reports_where_the_ray_enters() {
+    let d = device("D", 5, 1);
+    let did = d.id;
+    let doc = doc(vec![rack("R", 42, vec![d])]);
+    let face = device_face(0, &doc.racks[0].devices[0]).center();
+    let (id, at) = pick_hit(&doc, &limits(), &ray_at(face.x + 150.0, face.y)).unwrap();
+    assert_eq!(id, ObjectId::Device(did));
+    assert_eq!(at, Vec3::new(face.x + 150.0, face.y, 0.0));
+}

@@ -53,6 +53,11 @@ impl Ray {
 
 /// The nearest rack, device or port under the ray.
 pub fn pick(doc: &Document, limits: &Limits, ray: &Ray) -> Option<ObjectId> {
+    pick_hit(doc, limits, ray).map(|(id, _)| id)
+}
+
+/// Like `pick`, plus the world point where the ray enters the object.
+pub fn pick_hit(doc: &Document, limits: &Limits, ray: &Ray) -> Option<(ObjectId, Vec3)> {
     let mut best: Option<(f32, ObjectId)> = None;
     let mut consider = |t: Option<f32>, id: ObjectId| {
         if let Some(t) = t
@@ -82,7 +87,7 @@ pub fn pick(doc: &Document, limits: &Limits, ray: &Ray) -> Option<ObjectId> {
             }
         }
     }
-    best.map(|(_, id)| id)
+    best.map(|(t, id)| (id, ray.origin + ray.dir * t))
 }
 
 /// Which U of `device` lies under world height `y` (0 = its bottom U), clamped to the device.

@@ -225,7 +225,7 @@ teststationview/
     top U** (never holds equipment) with the rack name printed on it.
   - Device: a box in its colour with its name printed on the front face.
   - Port: a small marker in its cell. Its name appears beside/under it only while the port is
-    hovered or selected.
+    hovered or selected, or while its device is selected (then all the device's port names show).
 - **Geometry:** one unit-cube mesh drawn instanced (transform, colour and flags per instance).
 - **Text:** strings are rasterised on an offscreen browser 2D canvas, uploaded as textures and
   drawn as quads just in front of the face. Text auto-scales to fit and is black or white depending
@@ -291,6 +291,8 @@ teststationview/
 - Two-way between the tree and the 3D view.
 - Left click (without movement) on an object in 3D selects it. On empty space, it clears the
   selection.
+- Double click on an object in 3D selects it and frames it in the camera (as a tree double click
+  does). Double click on empty space does nothing.
 
 #### 3D context menu (right click)
 

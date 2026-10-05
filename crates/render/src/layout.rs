@@ -4,6 +4,7 @@
 //! plane is z = 0 and they extend towards -Z. U1 sits directly on top of the plinth.
 
 use glam::{Vec2, Vec3};
+use tsv_core::edit::ObjectId;
 use tsv_core::limits::Limits;
 use tsv_core::model::{Device, Document, Rack};
 use tsv_core::port_grid::Cell;
@@ -159,10 +160,17 @@ pub fn u_label_rect(index: usize, u: u32) -> FaceRect {
 }
 
 pub fn device_box(rack_index: usize, device: &Device) -> Aabb {
-    let face = device_face(rack_index, device);
+    units_box(rack_index, device.bottom_u, device.height_u)
+}
+
+/// The box a device of `height_u` units would occupy with its bottom at `bottom_u`
+/// (used for drag ghosts, which may not correspond to a device in the document).
+pub fn units_box(rack_index: usize, bottom_u: u32, height_u: u32) -> Aabb {
+    let x = rack_left_x(rack_index) + POST_WIDTH_MM;
+    let y = u_bottom_y(bottom_u);
     Aabb::new(
-        Vec3::new(face.min.x, face.min.y, -DEVICE_DEPTH_MM),
-        Vec3::new(face.max.x, face.max.y, 0.0),
+        Vec3::new(x, y, -DEVICE_DEPTH_MM),
+        Vec3::new(x + FRONT_WIDTH_MM, y + height_u as f32 * U_MM, 0.0),
     )
 }
 
@@ -254,4 +262,39 @@ pub fn scene_bounds(doc: &Document) -> Aabb {
         .flat_map(|(i, r)| rack_parts(i, r))
         .reduce(|a, b| a.union(&b))
         .expect("at least one rack part")
+}
+
+/// The world-space bounds of a rack (all its parts), device or port marker.
+pub fn object_bounds(doc: &Document, limits: &Limits, id: ObjectId) -> Option<Aabb> {
+    match id {
+        ObjectId::Rack(rack_id) => {
+            let (ri, rack) = doc
+                .racks
+                .iter()
+                .enumerate()
+                .find(|(_, r)| r.id == rack_id)?;
+            rack_parts(ri, rack).into_iter().reduce(|a, b| a.union(&b))
+        }
+        ObjectId::Device(device_id) => doc.racks.iter().enumerate().find_map(|(ri, r)| {
+            r.devices
+                .iter()
+                .find(|d| d.id == device_id)
+                .map(|d| device_box(ri, d))
+        }),
+        ObjectId::Port(port_id) => doc.racks.iter().enumerate().find_map(|(ri, r)| {
+            r.devices.iter().find_map(|d| {
+                d.ports.iter().find(|p| p.id == port_id).map(|p| {
+                    port_marker_box(
+                        ri,
+                        d,
+                        Cell {
+                            row: p.row,
+                            col: p.col,
+                        },
+                        limits,
+                    )
+                })
+            })
+        }),
+    }
 }
