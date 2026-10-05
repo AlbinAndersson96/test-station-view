@@ -1,0 +1,257 @@
+//! World-space geometry of racks, devices and ports (spec §4.2 "World units").
+//!
+//! Coordinates are millimetres, right-handed, Y up. Racks stand in a row along +X, their front
+//! plane is z = 0 and they extend towards -Z. U1 sits directly on top of the plinth.
+
+use glam::{Vec2, Vec3};
+use tsv_core::limits::Limits;
+use tsv_core::model::{Device, Document, Rack};
+use tsv_core::port_grid::Cell;
+
+pub const U_MM: f32 = 44.45;
+pub const FRONT_WIDTH_MM: f32 = 482.6;
+pub const RACK_WIDTH_MM: f32 = 600.0;
+pub const POST_WIDTH_MM: f32 = (RACK_WIDTH_MM - FRONT_WIDTH_MM) / 2.0;
+pub const RACK_DEPTH_MM: f32 = 800.0;
+pub const DEVICE_DEPTH_MM: f32 = 450.0;
+pub const RACK_GAP_MM: f32 = 40.0;
+pub const PLINTH_MM: f32 = 60.0;
+pub const HEADER_MM: f32 = 100.0;
+pub const PANEL_MM: f32 = 20.0;
+pub const PORT_PROTRUSION_MM: f32 = 6.0;
+/// Labels float this far in front of the surface they are printed on.
+pub const LABEL_OFFSET_MM: f32 = 1.0;
+
+/// Axis-aligned box.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Aabb {
+    pub min: Vec3,
+    pub max: Vec3,
+}
+
+impl Aabb {
+    pub fn new(min: Vec3, max: Vec3) -> Aabb {
+        Aabb { min, max }
+    }
+
+    pub fn center(&self) -> Vec3 {
+        (self.min + self.max) * 0.5
+    }
+
+    pub fn size(&self) -> Vec3 {
+        self.max - self.min
+    }
+
+    pub fn union(&self, other: &Aabb) -> Aabb {
+        Aabb {
+            min: self.min.min(other.min),
+            max: self.max.max(other.max),
+        }
+    }
+
+    pub fn translated(&self, offset: Vec3) -> Aabb {
+        Aabb {
+            min: self.min + offset,
+            max: self.max + offset,
+        }
+    }
+}
+
+/// A rectangle in a plane of constant z, facing +Z (where labels and port grids live).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FaceRect {
+    pub min: Vec2,
+    pub max: Vec2,
+    pub z: f32,
+}
+
+impl FaceRect {
+    pub fn center(&self) -> Vec3 {
+        let c = (self.min + self.max) * 0.5;
+        Vec3::new(c.x, c.y, self.z)
+    }
+
+    pub fn size(&self) -> Vec2 {
+        self.max - self.min
+    }
+
+    pub fn contains(&self, p: Vec2) -> bool {
+        p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
+    }
+
+    pub fn translated(&self, offset: Vec3) -> FaceRect {
+        FaceRect {
+            min: self.min + offset.truncate(),
+            max: self.max + offset.truncate(),
+            z: self.z + offset.z,
+        }
+    }
+}
+
+pub fn rack_left_x(index: usize) -> f32 {
+    index as f32 * (RACK_WIDTH_MM + RACK_GAP_MM)
+}
+
+/// Bottom edge of rack unit `u` (U1 is the lowest).
+pub fn u_bottom_y(u: u32) -> f32 {
+    PLINTH_MM + (u.saturating_sub(1)) as f32 * U_MM
+}
+
+pub fn rack_total_height(rack: &Rack) -> f32 {
+    PLINTH_MM + rack.height_u as f32 * U_MM + HEADER_MM
+}
+
+/// Frame parts of a rack: two side posts, plinth, header panel, top cover.
+pub fn rack_parts(index: usize, rack: &Rack) -> Vec<Aabb> {
+    let left = rack_left_x(index);
+    let right = left + RACK_WIDTH_MM;
+    let inner_left = left + POST_WIDTH_MM;
+    let inner_right = right - POST_WIDTH_MM;
+    let total = rack_total_height(rack);
+    let units_top = u_bottom_y(rack.height_u + 1);
+    vec![
+        Aabb::new(
+            Vec3::new(left, 0.0, -RACK_DEPTH_MM),
+            Vec3::new(inner_left, total, 0.0),
+        ),
+        Aabb::new(
+            Vec3::new(inner_right, 0.0, -RACK_DEPTH_MM),
+            Vec3::new(right, total, 0.0),
+        ),
+        Aabb::new(
+            Vec3::new(inner_left, 0.0, -RACK_DEPTH_MM),
+            Vec3::new(inner_right, PLINTH_MM, 0.0),
+        ),
+        Aabb::new(
+            Vec3::new(inner_left, units_top, -PANEL_MM),
+            Vec3::new(inner_right, total, 0.0),
+        ),
+        Aabb::new(
+            Vec3::new(inner_left, total - PANEL_MM, -RACK_DEPTH_MM),
+            Vec3::new(inner_right, total, 0.0),
+        ),
+    ]
+}
+
+/// The header panel's front, where the rack name is printed.
+pub fn rack_name_rect(index: usize, rack: &Rack) -> FaceRect {
+    let inner_left = rack_left_x(index) + POST_WIDTH_MM;
+    let units_top = u_bottom_y(rack.height_u + 1);
+    FaceRect {
+        min: Vec2::new(inner_left + 10.0, units_top + 15.0),
+        max: Vec2::new(
+            inner_left + FRONT_WIDTH_MM - 10.0,
+            units_top + HEADER_MM - 15.0,
+        ),
+        z: LABEL_OFFSET_MM,
+    }
+}
+
+/// U number label on the front of the left post.
+pub fn u_label_rect(index: usize, u: u32) -> FaceRect {
+    let left = rack_left_x(index);
+    let bottom = u_bottom_y(u);
+    FaceRect {
+        min: Vec2::new(left + 8.0, bottom + U_MM * 0.2),
+        max: Vec2::new(left + POST_WIDTH_MM - 8.0, bottom + U_MM * 0.8),
+        z: LABEL_OFFSET_MM,
+    }
+}
+
+pub fn device_box(rack_index: usize, device: &Device) -> Aabb {
+    let face = device_face(rack_index, device);
+    Aabb::new(
+        Vec3::new(face.min.x, face.min.y, -DEVICE_DEPTH_MM),
+        Vec3::new(face.max.x, face.max.y, 0.0),
+    )
+}
+
+/// The device's front face (z = 0).
+pub fn device_face(rack_index: usize, device: &Device) -> FaceRect {
+    let x = rack_left_x(rack_index) + POST_WIDTH_MM;
+    let y = u_bottom_y(device.bottom_u);
+    FaceRect {
+        min: Vec2::new(x, y),
+        max: Vec2::new(x + FRONT_WIDTH_MM, y + device.height_u as f32 * U_MM),
+        z: 0.0,
+    }
+}
+
+/// Where the device name is printed: centred on the face, at most one U tall.
+pub fn device_name_rect(rack_index: usize, device: &Device) -> FaceRect {
+    let face = device_face(rack_index, device);
+    let height = U_MM * 0.6;
+    let cy = (face.min.y + face.max.y) * 0.5;
+    FaceRect {
+        min: Vec2::new(face.min.x + 10.0, cy - height * 0.5),
+        max: Vec2::new(face.max.x - 10.0, cy + height * 0.5),
+        z: LABEL_OFFSET_MM,
+    }
+}
+
+/// One cell of the device's port grid (row 0 at the bottom).
+pub fn port_cell_rect(rack_index: usize, device: &Device, cell: Cell, limits: &Limits) -> FaceRect {
+    let face = device_face(rack_index, device);
+    let rows = (device.height_u * limits.port_rows_per_u).max(1) as f32;
+    let w = FRONT_WIDTH_MM / limits.port_cols.max(1) as f32;
+    let h = face.size().y / rows;
+    let min = Vec2::new(
+        face.min.x + cell.col as f32 * w,
+        face.min.y + cell.row as f32 * h,
+    );
+    FaceRect {
+        min,
+        max: min + Vec2::new(w, h),
+        z: 0.0,
+    }
+}
+
+/// The small square marker drawn for a port, in the upper part of its cell.
+pub fn port_marker_box(rack_index: usize, device: &Device, cell: Cell, limits: &Limits) -> Aabb {
+    let r = port_cell_rect(rack_index, device, cell, limits);
+    let size = r.size();
+    let side = size.x.min(size.y) * 0.45;
+    let cx = (r.min.x + r.max.x) * 0.5;
+    let cy = r.min.y + size.y * 0.62;
+    Aabb::new(
+        Vec3::new(cx - side * 0.5, cy - side * 0.5, 0.0),
+        Vec3::new(cx + side * 0.5, cy + side * 0.5, PORT_PROTRUSION_MM),
+    )
+}
+
+/// Where a port's name appears (under its marker) while hovered or selected.
+pub fn port_label_rect(
+    rack_index: usize,
+    device: &Device,
+    cell: Cell,
+    limits: &Limits,
+) -> FaceRect {
+    let r = port_cell_rect(rack_index, device, cell, limits);
+    let size = r.size();
+    FaceRect {
+        min: Vec2::new(r.min.x + size.x * 0.05, r.min.y + size.y * 0.06),
+        max: Vec2::new(r.max.x - size.x * 0.05, r.min.y + size.y * 0.34),
+        z: LABEL_OFFSET_MM,
+    }
+}
+
+/// Bounds of everything in the document; a default 42U rack's bounds when it has no racks.
+pub fn scene_bounds(doc: &Document) -> Aabb {
+    let default_rack;
+    let racks: Vec<(usize, &Rack)> = if doc.racks.is_empty() {
+        default_rack = Rack {
+            id: tsv_core::ids::RackId::new(),
+            name: tsv_core::name::Name::parse("R", &Limits::default()).expect("valid"),
+            height_u: tsv_core::model::DEFAULT_RACK_HEIGHT_U,
+            devices: Vec::new(),
+        };
+        vec![(0, &default_rack)]
+    } else {
+        doc.racks.iter().enumerate().collect()
+    };
+    racks
+        .into_iter()
+        .flat_map(|(i, r)| rack_parts(i, r))
+        .reduce(|a, b| a.union(&b))
+        .expect("at least one rack part")
+}
