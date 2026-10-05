@@ -4,3 +4,4 @@
 pub mod forms;
 pub mod interaction;
 pub mod session;
+pub mod storage;
