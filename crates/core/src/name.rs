@@ -22,7 +22,9 @@ impl Name {
             return Err(NameError::Empty);
         }
         if normalized.chars().count() > limits.name_max_len {
-            return Err(NameError::TooLong { max: limits.name_max_len });
+            return Err(NameError::TooLong {
+                max: limits.name_max_len,
+            });
         }
         Ok(Name(normalized))
     }
@@ -96,7 +98,9 @@ impl DocumentName {
             return Err(DocumentNameError::Empty);
         }
         if trimmed.chars().count() > DOCUMENT_NAME_MAX_LEN {
-            return Err(DocumentNameError::TooLong { max: DOCUMENT_NAME_MAX_LEN });
+            return Err(DocumentNameError::TooLong {
+                max: DOCUMENT_NAME_MAX_LEN,
+            });
         }
         for c in trimmed.chars() {
             if c.is_control() {

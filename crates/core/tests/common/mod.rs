@@ -14,7 +14,13 @@ pub fn name(s: &str) -> Name {
 }
 
 pub fn port(n: &str, row: u32, col: u32) -> Port {
-    Port { id: PortId::new(), name: name(n), row, col, kind: PortKind::default() }
+    Port {
+        id: PortId::new(),
+        name: name(n),
+        row,
+        col,
+        kind: PortKind::default(),
+    }
 }
 
 pub fn device(n: &str, bottom_u: u32, height_u: u32) -> Device {
@@ -35,25 +41,42 @@ pub fn with_ports(mut d: Device, ports: Vec<Port>) -> Device {
 }
 
 pub fn rack(n: &str, height_u: u32, devices: Vec<Device>) -> Rack {
-    Rack { id: RackId::new(), name: name(n), height_u, devices }
+    Rack {
+        id: RackId::new(),
+        name: name(n),
+        height_u,
+        devices,
+    }
 }
 
 pub fn doc(racks: Vec<Rack>) -> Document {
-    Document { name: DocumentName::parse("Test").unwrap(), racks }
+    Document {
+        name: DocumentName::parse("Test").unwrap(),
+        racks,
+    }
 }
 
 pub fn rack_named<'a>(doc: &'a Document, n: &str) -> &'a Rack {
-    doc.racks.iter().find(|r| r.name.as_str() == n).unwrap_or_else(|| panic!("no rack {n}"))
+    doc.racks
+        .iter()
+        .find(|r| r.name.as_str() == n)
+        .unwrap_or_else(|| panic!("no rack {n}"))
 }
 
 pub fn device_named<'a>(rack: &'a Rack, n: &str) -> &'a Device {
-    rack.devices.iter().find(|d| d.name.as_str() == n).unwrap_or_else(|| panic!("no device {n}"))
+    rack.devices
+        .iter()
+        .find(|d| d.name.as_str() == n)
+        .unwrap_or_else(|| panic!("no device {n}"))
 }
 
 /// `(name, bottom_u)` of every device in the rack, lowest first.
 pub fn layout(rack: &Rack) -> Vec<(String, u32)> {
-    let mut v: Vec<(String, u32)> =
-        rack.devices.iter().map(|d| (d.name.to_string(), d.bottom_u)).collect();
+    let mut v: Vec<(String, u32)> = rack
+        .devices
+        .iter()
+        .map(|d| (d.name.to_string(), d.bottom_u))
+        .collect();
     v.sort_by_key(|(_, bottom)| *bottom);
     v
 }

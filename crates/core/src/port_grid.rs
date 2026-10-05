@@ -42,7 +42,11 @@ pub enum PortPlacementError {
 /// and the exact centre pushes right.
 pub fn push_direction(dx: f32, dy: f32) -> PushDir {
     if dx.abs() >= dy.abs() {
-        if dx > 0.0 { PushDir::Left } else { PushDir::Right }
+        if dx > 0.0 {
+            PushDir::Left
+        } else {
+            PushDir::Right
+        }
     } else if dy < 0.0 {
         PushDir::Up
     } else {
@@ -77,10 +81,22 @@ pub fn push_for_drop(
 
 fn step(cell: Cell, dir: PushDir, grid: GridSize) -> Option<Cell> {
     let next = match dir {
-        PushDir::Up => Cell { row: cell.row.checked_add(1)?, ..cell },
-        PushDir::Down => Cell { row: cell.row.checked_sub(1)?, ..cell },
-        PushDir::Left => Cell { col: cell.col.checked_sub(1)?, ..cell },
-        PushDir::Right => Cell { col: cell.col.checked_add(1)?, ..cell },
+        PushDir::Up => Cell {
+            row: cell.row.checked_add(1)?,
+            ..cell
+        },
+        PushDir::Down => Cell {
+            row: cell.row.checked_sub(1)?,
+            ..cell
+        },
+        PushDir::Left => Cell {
+            col: cell.col.checked_sub(1)?,
+            ..cell
+        },
+        PushDir::Right => Cell {
+            col: cell.col.checked_add(1)?,
+            ..cell
+        },
     };
     grid.contains(next).then_some(next)
 }

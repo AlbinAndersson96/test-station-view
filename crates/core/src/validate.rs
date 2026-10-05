@@ -24,13 +24,22 @@ pub enum ValidationError {
     #[error("Rack '{rack}': device '{device}' is outside the rack")]
     DeviceOutsideRack { rack: String, device: String },
     #[error("Rack '{rack}': devices '{a}' and '{b}' overlap at U{u}")]
-    DevicesOverlap { rack: String, a: String, b: String, u: u32 },
+    DevicesOverlap {
+        rack: String,
+        a: String,
+        b: String,
+        u: u32,
+    },
     #[error("Device '{device}': the port name '{name}' is used more than once")]
     DuplicatePortName { device: String, name: String },
     #[error("Device '{device}': port '{port}' is outside the device face")]
     PortOutsideGrid { device: String, port: String },
     #[error("Device '{device}': ports '{a}' and '{b}' share a cell")]
-    PortsOverlap { device: String, a: String, b: String },
+    PortsOverlap {
+        device: String,
+        a: String,
+        b: String,
+    },
 }
 
 pub fn validate(doc: &Document, limits: &Limits) -> Result<(), ValidationError> {
@@ -47,7 +56,11 @@ pub fn validate(doc: &Document, limits: &Limits) -> Result<(), ValidationError> 
 fn check_unique_ids(doc: &Document) -> Result<(), ValidationError> {
     let mut seen: HashSet<Uuid> = HashSet::new();
     let mut insert = |id: Uuid| {
-        if seen.insert(id) { Ok(()) } else { Err(ValidationError::DuplicateId(id.to_string())) }
+        if seen.insert(id) {
+            Ok(())
+        } else {
+            Err(ValidationError::DuplicateId(id.to_string()))
+        }
     };
     for rack in &doc.racks {
         insert(rack.id.0)?;
@@ -77,7 +90,10 @@ fn check_rack(rack: &Rack, limits: &Limits) -> Result<(), ValidationError> {
         return Err(ValidationError::RackZeroHeight { rack: rack_name });
     }
     if let Some(name) = first_duplicate(rack.devices.iter().map(|d| &d.name)) {
-        return Err(ValidationError::DuplicateDeviceName { rack: rack_name, name: name.to_string() });
+        return Err(ValidationError::DuplicateDeviceName {
+            rack: rack_name,
+            name: name.to_string(),
+        });
     }
     for device in &rack.devices {
         if device.height_u == 0 {
@@ -113,7 +129,10 @@ fn check_rack(rack: &Rack, limits: &Limits) -> Result<(), ValidationError> {
 fn check_ports(device: &Device, limits: &Limits) -> Result<(), ValidationError> {
     let device_name = device.name.to_string();
     if let Some(name) = first_duplicate(device.ports.iter().map(|p| &p.name)) {
-        return Err(ValidationError::DuplicatePortName { device: device_name, name: name.to_string() });
+        return Err(ValidationError::DuplicatePortName {
+            device: device_name,
+            name: name.to_string(),
+        });
     }
     let rows = u64::from(device.height_u) * u64::from(limits.port_rows_per_u);
     for port in &device.ports {

@@ -15,7 +15,11 @@ pub struct Rgb {
 }
 
 impl Rgb {
-    pub const NEUTRAL_GREY: Rgb = Rgb { r: 0xa0, g: 0xa0, b: 0xa0 };
+    pub const NEUTRAL_GREY: Rgb = Rgb {
+        r: 0xa0,
+        g: 0xa0,
+        b: 0xa0,
+    };
 
     pub fn to_hex(self) -> String {
         format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
@@ -28,7 +32,11 @@ impl Rgb {
             return None;
         }
         let channel = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
-        Some(Rgb { r: channel(0)?, g: channel(2)?, b: channel(4)? })
+        Some(Rgb {
+            r: channel(0)?,
+            g: channel(2)?,
+            b: channel(4)?,
+        })
     }
 }
 
@@ -144,14 +152,21 @@ impl Document {
 
     pub(crate) fn device_location(&self, id: DeviceId) -> Option<(usize, usize)> {
         self.racks.iter().enumerate().find_map(|(ri, rack)| {
-            rack.devices.iter().position(|d| d.id == id).map(|di| (ri, di))
+            rack.devices
+                .iter()
+                .position(|d| d.id == id)
+                .map(|di| (ri, di))
         })
     }
 
     pub(crate) fn port_location(&self, id: PortId) -> Option<(usize, usize, usize)> {
         self.racks.iter().enumerate().find_map(|(ri, rack)| {
             rack.devices.iter().enumerate().find_map(|(di, device)| {
-                device.ports.iter().position(|p| p.id == id).map(|pi| (ri, di, pi))
+                device
+                    .ports
+                    .iter()
+                    .position(|p| p.id == id)
+                    .map(|pi| (ri, di, pi))
             })
         })
     }

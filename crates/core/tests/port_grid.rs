@@ -1,6 +1,6 @@
 use tsv_core::ids::PortId;
 use tsv_core::port_grid::{
-    push_direction, push_for_drop, Cell, GridSize, PortPlacementError, PushDir,
+    Cell, GridSize, PortPlacementError, PushDir, push_direction, push_for_drop,
 };
 use uuid::Uuid;
 

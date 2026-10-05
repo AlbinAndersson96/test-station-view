@@ -2,7 +2,7 @@ use crate::edit::{ObjectId, Plan, Rejection};
 use crate::ids::{DeviceId, RackId};
 use crate::limits::Limits;
 use crate::model::{Device, DeviceKind, Document, Rgb};
-use crate::name::{auto_rename, Name};
+use crate::name::{Name, auto_rename};
 use crate::placement::{self, Occupant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,14 +42,20 @@ pub fn plan_device_drop(
         }
     };
 
-    let rack_index = document.rack_index(target_rack).ok_or(Rejection::NotFound)?;
+    let rack_index = document
+        .rack_index(target_rack)
+        .ok_or(Rejection::NotFound)?;
     let rack = &mut document.racks[rack_index];
     let bottom = placement::clamp_bottom(bottom_u, device.height_u, rack.height_u)?;
     let others = occupants(&rack.devices);
     let new_bottoms = placement::push_for_drop(&others, bottom, device.height_u, rack.height_u)?;
     apply_bottoms(&mut rack.devices, &new_bottoms);
 
-    device.name = auto_rename(&device.name, |c| rack.devices.iter().any(|d| d.name.same_as(c)), limits);
+    device.name = auto_rename(
+        &device.name,
+        |c| rack.devices.iter().any(|d| d.name.same_as(c)),
+        limits,
+    );
     device.bottom_u = bottom;
     let subject = Some(ObjectId::Device(device.id));
     rack.devices.push(device);
@@ -60,24 +66,45 @@ pub fn plan_remove_device(doc: &Document, device_id: DeviceId) -> Result<Plan, R
     let (ri, di) = doc.device_location(device_id).ok_or(Rejection::NotFound)?;
     let mut document = doc.clone();
     document.racks[ri].devices.remove(di);
-    Ok(Plan { document, subject: None })
+    Ok(Plan {
+        document,
+        subject: None,
+    })
 }
 
-pub fn plan_rename_device(doc: &Document, device_id: DeviceId, name: Name) -> Result<Plan, Rejection> {
+pub fn plan_rename_device(
+    doc: &Document,
+    device_id: DeviceId,
+    name: Name,
+) -> Result<Plan, Rejection> {
     let (ri, di) = doc.device_location(device_id).ok_or(Rejection::NotFound)?;
-    if doc.racks[ri].devices.iter().any(|d| d.id != device_id && d.name.same_as(&name)) {
+    if doc.racks[ri]
+        .devices
+        .iter()
+        .any(|d| d.id != device_id && d.name.same_as(&name))
+    {
         return Err(Rejection::NameTaken(name.to_string()));
     }
     let mut document = doc.clone();
     document.racks[ri].devices[di].name = name;
-    Ok(Plan { document, subject: Some(ObjectId::Device(device_id)) })
+    Ok(Plan {
+        document,
+        subject: Some(ObjectId::Device(device_id)),
+    })
 }
 
-pub fn plan_set_device_color(doc: &Document, device_id: DeviceId, color: Rgb) -> Result<Plan, Rejection> {
+pub fn plan_set_device_color(
+    doc: &Document,
+    device_id: DeviceId,
+    color: Rgb,
+) -> Result<Plan, Rejection> {
     let (ri, di) = doc.device_location(device_id).ok_or(Rejection::NotFound)?;
     let mut document = doc.clone();
     document.racks[ri].devices[di].color = color;
-    Ok(Plan { document, subject: Some(ObjectId::Device(device_id)) })
+    Ok(Plan {
+        document,
+        subject: Some(ObjectId::Device(device_id)),
+    })
 }
 
 /// Growing keeps the bottom fixed and pushes devices above upward.
@@ -111,13 +138,20 @@ pub fn plan_set_device_height(
     }
 
     rack.devices[di].height_u = height_u;
-    Ok(Plan { document, subject: Some(ObjectId::Device(device_id)) })
+    Ok(Plan {
+        document,
+        subject: Some(ObjectId::Device(device_id)),
+    })
 }
 
 fn occupants<'a>(devices: impl IntoIterator<Item = &'a Device>) -> Vec<Occupant> {
     devices
         .into_iter()
-        .map(|d| Occupant { id: d.id, bottom_u: d.bottom_u, height_u: d.height_u })
+        .map(|d| Occupant {
+            id: d.id,
+            bottom_u: d.bottom_u,
+            height_u: d.height_u,
+        })
         .collect()
 }
 

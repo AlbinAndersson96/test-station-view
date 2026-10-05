@@ -43,7 +43,10 @@ fn add_rack_to_empty_document_uses_defaults() {
 
 #[test]
 fn remove_rack_removes_it_with_its_devices() {
-    let d = doc(vec![rack("A", 42, vec![device("DMM", 1, 1)]), rack("B", 42, vec![])]);
+    let d = doc(vec![
+        rack("A", 42, vec![device("DMM", 1, 1)]),
+        rack("B", 42, vec![]),
+    ]);
     let plan = plan_remove_rack(&d, d.racks[0].id).unwrap();
     assert_eq!(rack_names(&plan.document), vec!["B"]);
     assert_eq!(plan.subject, None);
@@ -52,14 +55,27 @@ fn remove_rack_removes_it_with_its_devices() {
 #[test]
 fn unknown_rack_is_not_found() {
     let d = Document::new_default(&limits());
-    assert_eq!(plan_remove_rack(&d, RackId::new()).unwrap_err(), Rejection::NotFound);
-    assert_eq!(plan_move_rack(&d, RackId::new(), 0).unwrap_err(), Rejection::NotFound);
-    assert_eq!(plan_set_rack_height(&d, RackId::new(), 10).unwrap_err(), Rejection::NotFound);
+    assert_eq!(
+        plan_remove_rack(&d, RackId::new()).unwrap_err(),
+        Rejection::NotFound
+    );
+    assert_eq!(
+        plan_move_rack(&d, RackId::new(), 0).unwrap_err(),
+        Rejection::NotFound
+    );
+    assert_eq!(
+        plan_set_rack_height(&d, RackId::new(), 10).unwrap_err(),
+        Rejection::NotFound
+    );
 }
 
 #[test]
 fn move_rack_reorders_the_row() {
-    let d = doc(vec![rack("A", 42, vec![]), rack("B", 42, vec![]), rack("C", 42, vec![])]);
+    let d = doc(vec![
+        rack("A", 42, vec![]),
+        rack("B", 42, vec![]),
+        rack("C", 42, vec![]),
+    ]);
     let plan = plan_move_rack(&d, d.racks[2].id, 0).unwrap();
     assert_eq!(rack_names(&plan.document), vec!["C", "A", "B"]);
     let plan = plan_move_rack(&d, d.racks[0].id, 99).unwrap();
@@ -86,14 +102,23 @@ fn rename_rack_allows_changing_case_of_its_own_name() {
 fn set_rack_height_rejects_cutting_off_equipment() {
     let d = doc(vec![rack("R", 42, vec![device("PSU", 40, 2)])]);
     let id = d.racks[0].id;
-    assert_eq!(plan_set_rack_height(&d, id, 41).unwrap().document.racks[0].height_u, 41);
-    assert_eq!(plan_set_rack_height(&d, id, 40).unwrap_err(), Rejection::EquipmentOutside);
+    assert_eq!(
+        plan_set_rack_height(&d, id, 41).unwrap().document.racks[0].height_u,
+        41
+    );
+    assert_eq!(
+        plan_set_rack_height(&d, id, 40).unwrap_err(),
+        Rejection::EquipmentOutside
+    );
 }
 
 #[test]
 fn set_rack_height_rejects_zero() {
     let d = doc(vec![rack("R", 42, vec![])]);
-    assert_eq!(plan_set_rack_height(&d, d.racks[0].id, 0).unwrap_err(), Rejection::ZeroHeight);
+    assert_eq!(
+        plan_set_rack_height(&d, d.racks[0].id, 0).unwrap_err(),
+        Rejection::ZeroHeight
+    );
 }
 
 #[test]

@@ -21,7 +21,11 @@ pub enum PlacementError {
 }
 
 /// Clamps a snapped bottom U so a device of `height_u` lies inside the rack.
-pub fn clamp_bottom(bottom_u: u32, height_u: u32, rack_height_u: u32) -> Result<u32, PlacementError> {
+pub fn clamp_bottom(
+    bottom_u: u32,
+    height_u: u32,
+    rack_height_u: u32,
+) -> Result<u32, PlacementError> {
     if height_u > rack_height_u {
         return Err(PlacementError::TooTall);
     }
@@ -38,10 +42,17 @@ pub fn push_for_drop(
     rack_height_u: u32,
 ) -> Result<Vec<(DeviceId, u32)>, PlacementError> {
     let dropped_centre = 2 * i64::from(bottom_u) + i64::from(height_u) - 1;
-    let (up, down): (Vec<Occupant>, Vec<Occupant>) =
-        others.iter().copied().partition(|o| doubled_centre(o) > dropped_centre);
+    let (up, down): (Vec<Occupant>, Vec<Occupant>) = others
+        .iter()
+        .copied()
+        .partition(|o| doubled_centre(o) > dropped_centre);
     let mut moved = HashMap::new();
-    push_up(up, i64::from(bottom_u) + i64::from(height_u), rack_height_u, &mut moved)?;
+    push_up(
+        up,
+        i64::from(bottom_u) + i64::from(height_u),
+        rack_height_u,
+        &mut moved,
+    )?;
     push_down(down, i64::from(bottom_u) - 1, &mut moved)?;
     Ok(collect(others, &moved))
 }
@@ -53,9 +64,18 @@ pub fn push_for_growth(
     new_height_u: u32,
     rack_height_u: u32,
 ) -> Result<Vec<(DeviceId, u32)>, PlacementError> {
-    let above: Vec<Occupant> = others.iter().copied().filter(|o| o.bottom_u > bottom_u).collect();
+    let above: Vec<Occupant> = others
+        .iter()
+        .copied()
+        .filter(|o| o.bottom_u > bottom_u)
+        .collect();
     let mut moved = HashMap::new();
-    push_up(above, i64::from(bottom_u) + i64::from(new_height_u), rack_height_u, &mut moved)?;
+    push_up(
+        above,
+        i64::from(bottom_u) + i64::from(new_height_u),
+        rack_height_u,
+        &mut moved,
+    )?;
     Ok(collect(others, &moved))
 }
 

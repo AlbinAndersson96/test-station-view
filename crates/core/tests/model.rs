@@ -42,8 +42,20 @@ fn top_u_and_port_rows() {
 
 #[test]
 fn devices_are_listed_top_down() {
-    let r = rack("R", 42, vec![device("Low", 1, 1), device("High", 30, 2), device("Mid", 10, 1)]);
-    let names: Vec<&str> = r.devices_top_down().iter().map(|d| d.name.as_str()).collect();
+    let r = rack(
+        "R",
+        42,
+        vec![
+            device("Low", 1, 1),
+            device("High", 30, 2),
+            device("Mid", 10, 1),
+        ],
+    );
+    let names: Vec<&str> = r
+        .devices_top_down()
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
     assert_eq!(names, vec!["High", "Mid", "Low"]);
 }
 
@@ -52,23 +64,38 @@ fn ports_are_listed_in_reading_order() {
     // Row 0 is the bottom row, so the top row (row 1) is read first.
     let dev = with_ports(
         device("D", 1, 2),
-        vec![port("B0", 0, 3), port("T4", 1, 4), port("A0", 0, 0), port("T1", 1, 1)],
+        vec![
+            port("B0", 0, 3),
+            port("T4", 1, 4),
+            port("A0", 0, 0),
+            port("T1", 1, 1),
+        ],
     );
-    let names: Vec<&str> = dev.ports_in_reading_order().iter().map(|p| p.name.as_str()).collect();
+    let names: Vec<&str> = dev
+        .ports_in_reading_order()
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect();
     assert_eq!(names, vec!["T1", "T4", "A0", "B0"]);
 }
 
 #[test]
 fn rgb_hex_round_trip() {
     assert_eq!(Rgb::NEUTRAL_GREY.to_hex(), "#a0a0a0");
-    let c = Rgb { r: 0x12, g: 0xab, b: 0xff };
+    let c = Rgb {
+        r: 0x12,
+        g: 0xab,
+        b: 0xff,
+    };
     assert_eq!(Rgb::from_hex(&c.to_hex()), Some(c));
     assert_eq!(Rgb::from_hex("#12ABFF"), Some(c));
 }
 
 #[test]
 fn rgb_rejects_malformed_hex() {
-    for bad in ["#12345", "123456", "#gg0000", "#+f0000", "#ÅÅ00", "#1234567"] {
+    for bad in [
+        "#12345", "123456", "#gg0000", "#+f0000", "#ÅÅ00", "#1234567",
+    ] {
         assert_eq!(Rgb::from_hex(bad), None, "{bad}");
     }
 }

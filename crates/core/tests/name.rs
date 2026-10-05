@@ -1,5 +1,5 @@
 use tsv_core::limits::Limits;
-use tsv_core::name::{auto_rename, DocumentName, DocumentNameError, Name, NameError};
+use tsv_core::name::{DocumentName, DocumentNameError, Name, NameError, auto_rename};
 
 fn limits() -> Limits {
     Limits::default()
@@ -36,8 +36,14 @@ fn length_counts_characters_not_bytes() {
 
 #[test]
 fn max_len_comes_from_limits() {
-    let short = Limits { name_max_len: 3, ..Limits::default() };
-    assert_eq!(Name::parse("ABCD", &short), Err(NameError::TooLong { max: 3 }));
+    let short = Limits {
+        name_max_len: 3,
+        ..Limits::default()
+    };
+    assert_eq!(
+        Name::parse("ABCD", &short),
+        Err(NameError::TooLong { max: 3 })
+    );
 }
 
 #[test]
@@ -54,13 +60,19 @@ fn taken_by<'a>(names: &'a [Name]) -> impl Fn(&Name) -> bool + 'a {
 #[test]
 fn auto_rename_keeps_a_free_name() {
     let taken = [name("PSU")];
-    assert_eq!(auto_rename(&name("DMM"), taken_by(&taken), &limits()).as_str(), "DMM");
+    assert_eq!(
+        auto_rename(&name("DMM"), taken_by(&taken), &limits()).as_str(),
+        "DMM"
+    );
 }
 
 #[test]
 fn auto_rename_appends_first_free_suffix() {
     let taken = [name("DMM"), name("dmm_2")];
-    assert_eq!(auto_rename(&name("DMM"), taken_by(&taken), &limits()).as_str(), "DMM_3");
+    assert_eq!(
+        auto_rename(&name("DMM"), taken_by(&taken), &limits()).as_str(),
+        "DMM_3"
+    );
 }
 
 #[test]
@@ -86,7 +98,10 @@ fn auto_rename_truncates_more_for_two_digit_suffix() {
 
 #[test]
 fn document_name_trims_outer_whitespace_only() {
-    assert_eq!(DocumentName::parse("  My Station 1 ").unwrap().as_str(), "My Station 1");
+    assert_eq!(
+        DocumentName::parse("  My Station 1 ").unwrap().as_str(),
+        "My Station 1"
+    );
 }
 
 #[test]
@@ -107,12 +122,18 @@ fn document_name_rejects_forbidden_characters() {
 
 #[test]
 fn document_name_rejects_control_characters() {
-    assert_eq!(DocumentName::parse("a\tb"), Err(DocumentNameError::ControlChar));
+    assert_eq!(
+        DocumentName::parse("a\tb"),
+        Err(DocumentNameError::ControlChar)
+    );
 }
 
 #[test]
 fn document_name_rejects_trailing_dot() {
-    assert_eq!(DocumentName::parse("Station."), Err(DocumentNameError::TrailingDot));
+    assert_eq!(
+        DocumentName::parse("Station."),
+        Err(DocumentNameError::TrailingDot)
+    );
 }
 
 #[test]
