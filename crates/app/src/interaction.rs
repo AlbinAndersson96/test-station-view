@@ -227,6 +227,18 @@ impl Session {
         };
     }
 
+    /// Double-click in the 3D view: selects the object under `pos` and frames it.
+    /// Empty space (or a position off the canvas) does nothing.
+    pub fn double_click(&mut self, pos: Vec2, now_s: f64) {
+        if !self.mode.is_idle() || !self.on_canvas(pos) {
+            return;
+        }
+        if let Some(id) = pick(self.document(), &self.limits, &self.ray_at(pos)) {
+            self.select(Some(id));
+            self.frame(id, now_s);
+        }
+    }
+
     /// The object a right-click at `pos` refers to (for the context menu).
     pub fn context_target(&self, pos: Vec2) -> Option<ObjectId> {
         if !self.mode.is_idle() {

@@ -210,6 +210,7 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
                 color: contrast_text(device.color),
             });
 
+            let device_selected = input.selection == Some(id);
             let ink = contrast_text(device.color);
             let marker_color = Rgb {
                 r: ink[0],
@@ -233,7 +234,7 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
                 if selected {
                     scene.selected.push(b);
                 }
-                if selected || input.hovered_port == Some(port.id) {
+                if selected || device_selected || input.hovered_port == Some(port.id) {
                     scene.labels.push(Label {
                         text: port.name.to_string(),
                         rect: port_label_rect(ri, device, cell, input.limits).translated(offset),

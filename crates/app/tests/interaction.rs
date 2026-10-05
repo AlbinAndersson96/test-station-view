@@ -381,3 +381,26 @@ fn is_busy_reports_any_gesture_in_progress() {
     s.pointer_cancel(0.0);
     assert!(!s.is_busy());
 }
+
+#[test]
+fn double_click_selects_and_frames_the_object() {
+    let d = device("DMM", 20, 1);
+    let did = d.id;
+    let mut s = session(doc(vec![rack("R", 42, vec![d])]));
+    let start = *s.camera();
+    let mut now = 1.0;
+    let p = px(&s, device_point(&s, "DMM"));
+    s.double_click(p, now);
+    assert_eq!(s.selection(), Some(ObjectId::Device(did)));
+    settle(&mut s, &mut now);
+    assert!(
+        s.camera().distance < start.distance,
+        "zoomed in on the device"
+    );
+
+    let framed = *s.camera();
+    s.double_click(Vec2::new(2.0, 2.0), now);
+    settle(&mut s, &mut now);
+    assert_eq!(*s.camera(), framed, "empty space does nothing");
+    assert_eq!(s.selection(), Some(ObjectId::Device(did)));
+}

@@ -148,6 +148,10 @@ pub fn Viewport() -> impl IntoView {
             }));
         }
     };
+    let on_dblclick = move |ev: leptos::ev::MouseEvent| {
+        let (pos, _) = pointer_info(ev.client_x(), ev.client_y());
+        update(|s| s.double_click(pos, now_s()));
+    };
     let on_wheel = move |ev: leptos::ev::WheelEvent| {
         ev.prevent_default();
         update(|s| s.wheel(ev.delta_y() as f32));
@@ -162,6 +166,7 @@ pub fn Viewport() -> impl IntoView {
                 on:pointerup=move |ev: leptos::ev::PointerEvent| forward_up(&ev)
                 on:pointercancel=move |_| forward_cancel()
                 on:lostpointercapture=move |_| forward_cancel()
+                on:dblclick=on_dblclick
                 on:contextmenu=on_context
                 on:wheel=on_wheel
             ></canvas>
