@@ -75,6 +75,16 @@ impl Session {
         matches!(self.mode, Mode::Dragging { .. })
     }
 
+    /// Whether `pos` lies on the canvas. Off-canvas positions never target anything.
+    fn on_canvas(&self, pos: Vec2) -> bool {
+        pos.x >= 0.0 && pos.y >= 0.0 && pos.x <= self.viewport.x && pos.y <= self.viewport.y
+    }
+
+    /// `true` while any gesture (press, orbit, pan, drag) is in progress.
+    pub fn is_busy(&self) -> bool {
+        !self.mode.is_idle()
+    }
+
     pub fn pointer_down(&mut self, pos: Vec2, button: Button) {
         if !self.mode.is_idle() {
             return;
@@ -92,7 +102,12 @@ impl Session {
     pub fn pointer_move(&mut self, pos: Vec2, over_trash: bool, now_s: f64) {
         match self.mode.clone() {
             Mode::Idle => {
-                let hovered = match pick(self.document(), &self.limits, &self.ray_at(pos)) {
+                let target = if self.on_canvas(pos) {
+                    pick(self.document(), &self.limits, &self.ray_at(pos))
+                } else {
+                    None
+                };
+                let hovered = match target {
                     Some(ObjectId::Port(p)) => Some(p),
                     _ => None,
                 };
@@ -256,7 +271,7 @@ impl Session {
     ) {
         self.preview = None;
         self.ghost = None;
-        if over_trash {
+        if over_trash || !self.on_canvas(pos) {
             return;
         }
         let ray = self.ray_at(pos);

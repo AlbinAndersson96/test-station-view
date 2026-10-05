@@ -78,21 +78,21 @@ pub fn Properties() -> impl IntoView {
                 sig.rev.track();
                 match selected() {
                     Selected::Document { name } => view! {
-                        <Field label="Document name" value=name focus=true check=check_document_name
+                        <Field label="Document name" value=name check=check_document_name
                             commit=move |v: String| update(|s| s.rename_document(&v)) />
                     }
                         .into_any(),
                     Selected::Rack { id, name, height } => view! {
-                        <Field label="Name" value=name focus=true check=check_name
+                        <Field label="Name" value=name check=check_name focus_for=ObjectId::Rack(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Rack(id), &v)) />
-                        <Field label="Height (U)" value=height.to_string() focus=false check=check_height
+                        <Field label="Height (U)" value=height.to_string() check=check_height
                             commit=move |v: String| update(|s| s.set_rack_height(id, &v)) />
                     }
                         .into_any(),
                     Selected::Device { id, name, height, color, position } => view! {
-                        <Field label="Name" value=name focus=true check=check_name
+                        <Field label="Name" value=name check=check_name focus_for=ObjectId::Device(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Device(id), &v)) />
-                        <Field label="Height (U)" value=height.to_string() focus=false check=check_height
+                        <Field label="Height (U)" value=height.to_string() check=check_height
                             commit=move |v: String| update(|s| s.set_device_height(id, &v)) />
                         <label class="field">
                             <span>"Colour"</span>
@@ -110,7 +110,7 @@ pub fn Properties() -> impl IntoView {
                     }
                         .into_any(),
                     Selected::Port { id, name } => view! {
-                        <Field label="Name" value=name focus=true check=check_name
+                        <Field label="Name" value=name check=check_name focus_for=ObjectId::Port(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Port(id), &v)) />
                     }
                         .into_any(),
@@ -134,28 +134,29 @@ fn check_document_name(v: &str) -> Result<(), String> {
 }
 
 /// A text field that commits on Enter or blur and shows the error inline.
-/// `focus`: this is the name field that "Rename" in the 3D context menu focuses.
 #[component]
 fn Field(
     label: &'static str,
     value: String,
-    focus: bool,
     /// Validates while typing (`Err` is shown inline); `commit` re-checks against the document.
     check: fn(&str) -> Result<(), String>,
+    /// The object whose name this field edits, if any; "Rename" in the 3D menu focuses it.
+    #[prop(optional)]
+    focus_for: Option<ObjectId>,
     commit: impl Fn(String) -> Result<(), String> + 'static,
 ) -> impl IntoView {
     let sig = signals();
     let text = RwSignal::new(value.clone());
     let error = RwSignal::new(None::<String>);
     let input_ref = NodeRef::<leptos::html::Input>::new();
-    let seen_focus = sig.focus_name.get_untracked();
-    if focus {
+    if let Some(id) = focus_for {
         Effect::new(move |_| {
-            if sig.focus_name.get() != seen_focus
+            if sig.focus_name.get() == Some(id)
                 && let Some(input) = input_ref.get()
             {
                 let _ = input.focus();
                 input.select();
+                sig.focus_name.set(None);
             }
         });
     }

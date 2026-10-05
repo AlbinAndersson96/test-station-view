@@ -17,16 +17,30 @@ pub fn download(file_name: &str, text: &str) {
     let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else {
         return;
     };
-    let anchor = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.create_element("a").ok())
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    let anchor = document
+        .create_element("a")
+        .ok()
         .and_then(|e| e.dyn_into::<web_sys::HtmlAnchorElement>().ok());
-    if let Some(a) = anchor {
+    if let (Some(a), Some(body)) = (anchor, document.body()) {
+        // Some browsers only download from an anchor that is in the document.
         a.set_href(&url);
         a.set_download(file_name);
+        let _ = body.append_child(&a);
         a.click();
+        a.remove();
     }
-    let _ = web_sys::Url::revoke_object_url(&url);
+    // Revoke later: revoking immediately can cancel the download in some browsers.
+    let revoke = wasm_bindgen::prelude::Closure::once_into_js(move || {
+        let _ = web_sys::Url::revoke_object_url(&url);
+    });
+    let _ = window
+        .set_timeout_with_callback_and_timeout_and_arguments_0(revoke.unchecked_ref(), 10_000);
 }
 
 #[component]

@@ -37,7 +37,7 @@ fn App() -> impl IntoView {
         dialog: RwSignal::new(None),
         menu: RwSignal::new(None),
         renaming: RwSignal::new(None),
-        focus_name: RwSignal::new(0),
+        focus_name: RwSignal::new(None),
         tree_drag: RwSignal::new(None),
     };
     leptos::task::spawn_local(async move {
@@ -119,4 +119,7 @@ fn install_keyboard() {
         }
     });
     std::mem::forget(handle);
+    // Leaving the window mid-gesture must not leave a drag or orbit running.
+    let blur = window_event_listener(leptos::ev::blur, |_| viewport::forward_cancel());
+    std::mem::forget(blur);
 }

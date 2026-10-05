@@ -58,8 +58,8 @@ pub struct Signals {
     pub dialog: RwSignal<Option<Dialog>>,
     pub menu: RwSignal<Option<Menu>>,
     pub renaming: RwSignal<Option<RenameTarget>>,
-    /// Incremented to ask the properties panel to focus its name field.
-    pub focus_name: RwSignal<u64>,
+    /// Asks the properties panel to focus this object's name field; the field clears it.
+    pub focus_name: RwSignal<Option<ObjectId>>,
     pub tree_drag: RwSignal<Option<RackId>>,
 }
 

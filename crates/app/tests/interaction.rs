@@ -340,3 +340,44 @@ fn undoing_away_a_hovered_port_clears_the_hover() {
     s.undo();
     assert_eq!(s.hovered_port(), None);
 }
+
+#[test]
+fn drops_outside_the_canvas_never_commit() {
+    let mut s = session(doc(vec![rack("R", 42, vec![device("A", 10, 1)])]));
+    // Pan so the rack's centre sits 50 px left of the canvas edge.
+    let centre = px(&s, unit_point(20));
+    s.pointer_down(Vec2::new(400.0, 300.0), Button::Middle);
+    s.pointer_move(Vec2::new(400.0 - centre.x - 50.0, 300.0), false, 0.0);
+    s.pointer_up(Vec2::new(400.0 - centre.x - 50.0, 300.0), false, 0.0);
+    let off_canvas = px(&s, unit_point(20));
+    assert!(
+        off_canvas.x < 0.0,
+        "rack centre is off-canvas: {off_canvas}"
+    );
+    assert!(
+        tsv_render::pick::device_drop_target(s.document(), &s.ray_at(off_canvas), 0).is_some(),
+        "the ray there still hits the rack"
+    );
+    let before = s.document().clone();
+    s.start_drag(
+        DragSource::NewDevice {
+            name: name("X"),
+            height_u: 1,
+        },
+        0.0,
+    );
+    s.pointer_move(off_canvas, false, 0.0);
+    assert!(s.ghost().is_none());
+    s.pointer_up(off_canvas, false, 0.0);
+    assert_eq!(s.document(), &before);
+}
+
+#[test]
+fn is_busy_reports_any_gesture_in_progress() {
+    let mut s = session(Document::new_default(&limits()));
+    assert!(!s.is_busy());
+    s.pointer_down(Vec2::new(5.0, 5.0), Button::Left);
+    assert!(s.is_busy());
+    s.pointer_cancel(0.0);
+    assert!(!s.is_busy());
+}

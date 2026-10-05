@@ -30,6 +30,11 @@ pub fn pointer_info(client_x: i32, client_y: i32) -> (Vec2, bool) {
 
 /// Forwards a pointer move from whichever element captured the pointer.
 pub fn forward_move(ev: &web_sys::PointerEvent) {
+    // A gesture whose button is no longer held lost its release (e.g. alt-tab mid-drag).
+    if ev.buttons() == 0 && read(|s| s.is_busy()) {
+        forward_cancel();
+        return;
+    }
     let (pos, over_trash) = pointer_info(ev.client_x(), ev.client_y());
     let sig = signals();
     if sig.over_trash.get_untracked() != over_trash {
@@ -67,7 +72,7 @@ pub fn menu_rename(menu: Menu) {
     update(|s| s.select(Some(menu.target)));
     match menu.origin {
         MenuOrigin::Tree => sig.renaming.set(Some(RenameTarget::Object(menu.target))),
-        MenuOrigin::View => sig.focus_name.update(|n| *n += 1),
+        MenuOrigin::View => sig.focus_name.set(Some(menu.target)),
     }
 }
 
