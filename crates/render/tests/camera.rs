@@ -172,3 +172,20 @@ fn largest_document_fits_the_front_view() {
     let ndc = c.view_proj(16.0 / 9.0).project_point3(b.max);
     assert!(ndc.x.abs() <= 1.0 && ndc.y.abs() <= 1.0);
 }
+
+#[test]
+fn depth_view_proj_reverses_depth_only() {
+    let cam = front(1000.0);
+    let normal = cam.view_proj(1.5);
+    let reversed = cam.depth_view_proj(1.5);
+    for z in [-500.0, 0.0, 400.0] {
+        let p = Vec3::new(120.0, -80.0, z);
+        let (a, b) = (normal.project_point3(p), reversed.project_point3(p));
+        assert_close(a.x, b.x);
+        assert_close(a.y, b.y);
+    }
+    let near = cam.eye() - Vec3::Z * NEAR_MM;
+    let far = cam.eye() - Vec3::Z * FAR_MM;
+    assert_close(reversed.project_point3(near).z, 1.0);
+    assert_close(reversed.project_point3(far).z, 0.0);
+}

@@ -20,6 +20,8 @@ struct BoxOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) color: vec4<f32>,
+    // Position within the unit cube (0..1 on each axis), for edge lines.
+    @location(2) local: vec3<f32>,
 };
 
 @vertex
@@ -29,13 +31,32 @@ fn vs_box(v: BoxIn) -> BoxOut {
     out.clip = globals.view_proj * vec4<f32>(world, 1.0);
     out.normal = v.normal;
     out.color = v.color;
+    out.local = v.position;
     return out;
 }
 
+// Width of the edge lines in pixels. Edges darken light faces and lighten dark ones.
+const EDGE_PX: f32 = 1.0;
+const EDGE_DARKEN: f32 = 0.6;
+const EDGE_LIGHTEN: f32 = 0.3;
+const DARK_LUMINANCE: f32 = 0.3;
+
 @fragment
 fn fs_box(in: BoxOut) -> @location(0) vec4<f32> {
-    let light = 0.55 + 0.45 * max(dot(normalize(in.normal), globals.light_dir.xyz), 0.0);
-    return vec4<f32>(in.color.rgb * light, in.color.a);
+    let light = 0.5 + 0.5 * max(dot(normalize(in.normal), globals.light_dir.xyz), 0.0);
+    let lit = in.color.rgb * light;
+    // Distance in pixels to the face's nearest edge, ignoring the axis along the normal.
+    let per_px = max(fwidth(in.local), vec3<f32>(1e-6));
+    let in_plane = abs(in.normal) < vec3<f32>(0.5);
+    let to_edge = select(vec3<f32>(1e9), min(in.local, 1.0 - in.local) / per_px, in_plane);
+    let edge_px = min(to_edge.x, min(to_edge.y, to_edge.z));
+    // Faces only a few pixels across would be all edge, so their lines fade out.
+    let across = select(vec3<f32>(1e9), 1.0 / per_px, in_plane);
+    let fade = smoothstep(4.0, 12.0, min(across.x, min(across.y, across.z)));
+    let edge = (1.0 - smoothstep(EDGE_PX - 0.5, EDGE_PX + 0.5, edge_px)) * fade;
+    let dark = dot(lit, vec3<f32>(0.2126, 0.7152, 0.0722)) < DARK_LUMINANCE;
+    let edge_color = select(lit * EDGE_DARKEN, mix(lit, vec3<f32>(1.0), EDGE_LIGHTEN), dark);
+    return vec4<f32>(mix(lit, edge_color, edge), in.color.a);
 }
 
 @fragment
@@ -74,6 +95,46 @@ fn fs_label(in: LabelOut) -> @location(0) vec4<f32> {
     return textureSample(label_texture, label_sampler, in.uv);
 }
 
+struct FloorOut {
+    @builtin(position) clip: vec4<f32>,
+    // World x and z.
+    @location(0) world: vec2<f32>,
+    // min x, min z, max x, max z of the floor.
+    @location(1) rect: vec4<f32>,
+};
+
+// Four vertices as a triangle strip at y = 0, counter-clockwise seen from above.
+@vertex
+fn vs_floor(@builtin(vertex_index) index: u32, @location(0) rect: vec4<f32>) -> FloorOut {
+    let x = mix(rect.x, rect.z, f32(index & 1u));
+    let z = mix(rect.w, rect.y, f32(index >> 1u));
+    var out: FloorOut;
+    out.clip = globals.view_proj * vec4<f32>(x, 0.0, z, 1.0);
+    out.world = vec2<f32>(x, z);
+    out.rect = rect;
+    return out;
+}
+
+const GRID_MM: f32 = 1000.0;
+// The grid fades out over this distance towards the floor's edge.
+const FLOOR_FADE_MM: f32 = 1000.0;
+const GRID_COLOR: vec3<f32> = vec3<f32>(0.42, 0.46, 0.52);
+const GRID_ALPHA: f32 = 0.5;
+
+// Anti-aliased lines every GRID_MM.
+@fragment
+fn fs_floor(in: FloorOut) -> @location(0) vec4<f32> {
+    let cell = in.world / GRID_MM;
+    let per_px = max(fwidth(cell), vec2<f32>(1e-6));
+    let to_line = abs(fract(cell + 0.5) - 0.5) / per_px;
+    let line = 1.0 - smoothstep(0.0, 1.0, min(to_line.x, to_line.y));
+    // Lines only a few pixels apart (far away or at grazing angles) would shimmer.
+    let dense = 1.0 - smoothstep(0.1, 0.35, max(per_px.x, per_px.y));
+    let to_edge = min(in.world - in.rect.xy, in.rect.zw - in.world);
+    let edge = smoothstep(0.0, FLOOR_FADE_MM, min(to_edge.x, to_edge.y));
+    return vec4<f32>(GRID_COLOR, line * dense * edge * GRID_ALPHA);
+}
+
 @group(0) @binding(0) var selection_mask: texture_2d<f32>;
 
 @vertex
@@ -84,26 +145,32 @@ fn vs_fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f
 
 const GLOW_RADIUS: i32 = 3;
 
-// Glow on pixels just outside the selection mask, fading with distance.
+// Glow just outside the selection mask, fading with distance. The mask holds each pixel's
+// coverage (resolved MSAA), so a neighbour with coverage c puts the shape's edge roughly
+// `d - c` pixels away; that keeps the glow smooth along slanted edges.
 @fragment
 fn fs_outline(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     let centre = vec2<i32>(position.xy);
     let last = vec2<i32>(textureDimensions(selection_mask)) - vec2<i32>(1, 1);
-    if (textureLoad(selection_mask, centre, 0).r > 0.5) {
+    let inside = textureLoad(selection_mask, centre, 0).r;
+    if (inside >= 1.0) {
         discard;
     }
     var strength = 0.0;
     for (var dy = -GLOW_RADIUS; dy <= GLOW_RADIUS; dy++) {
         for (var dx = -GLOW_RADIUS; dx <= GLOW_RADIUS; dx++) {
             let q = clamp(centre + vec2<i32>(dx, dy), vec2<i32>(0, 0), last);
-            if (textureLoad(selection_mask, q, 0).r > 0.5) {
+            let coverage = textureLoad(selection_mask, q, 0).r;
+            if (coverage > 0.0) {
                 let d = length(vec2<f32>(f32(dx), f32(dy)));
-                strength = max(strength, 1.0 - (d - 1.0) / f32(GLOW_RADIUS));
+                strength = max(strength, 1.0 - (d - coverage) / f32(GLOW_RADIUS));
             }
         }
     }
-    if (strength <= 0.0) {
+    // Only the uncovered part of a pixel on the edge glows.
+    let alpha = clamp(strength, 0.0, 1.0) * (1.0 - inside);
+    if (alpha <= 0.0) {
         discard;
     }
-    return vec4<f32>(1.0, 0.65, 0.0, clamp(strength, 0.0, 1.0));
+    return vec4<f32>(1.0, 0.65, 0.0, alpha);
 }

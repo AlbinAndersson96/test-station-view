@@ -16,6 +16,17 @@ pub fn label_texture_size(width_mm: f32, height_mm: f32) -> (u32, u32) {
     (px(width_mm), px(height_mm))
 }
 
+/// Converts straight-alpha RGBA8 to premultiplied alpha in place. Filtering and blending
+/// premultiplied texels keeps transparent (black) texels from darkening the edges of text.
+pub fn premultiply(pixels: &mut [u8]) {
+    for texel in pixels.chunks_exact_mut(4) {
+        let alpha = u32::from(texel[3]);
+        for channel in &mut texel[..3] {
+            *channel = ((u32::from(*channel) * alpha + 127) / 255) as u8;
+        }
+    }
+}
+
 /// The full mip chain of an RGBA8 image, level 0 first, each level a 2×2 box filter of the
 /// previous one (odd edges are dropped), down to 1 × 1. Lets labels stay legible when they are
 /// drawn much smaller than their texture.

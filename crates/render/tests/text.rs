@@ -1,4 +1,4 @@
-use tsv_render::text::{MAX_LABEL_PX, label_texture_size, mip_chain};
+use tsv_render::text::{MAX_LABEL_PX, label_texture_size, mip_chain, premultiply};
 
 #[test]
 fn label_textures_have_four_pixels_per_millimetre() {
@@ -36,4 +36,28 @@ fn mip_levels_average_their_texels() {
     .concat();
     let chain = mip_chain(&base, 2, 2);
     assert_eq!(chain[1], (1, 1, vec![50, 25, 0, 255]));
+}
+
+#[test]
+fn premultiply_scales_colour_by_alpha() {
+    let mut pixels = vec![255, 128, 0, 255, 255, 255, 255, 128, 200, 100, 50, 0];
+    premultiply(&mut pixels);
+    assert_eq!(
+        pixels,
+        vec![255, 128, 0, 255, 128, 128, 128, 128, 0, 0, 0, 0]
+    );
+}
+
+#[test]
+fn premultiplied_mips_keep_the_colour_of_opaque_texels() {
+    // Opaque white next to transparent black, as a browser canvas returns text.
+    let mut base = vec![255, 255, 255, 255, 0, 0, 0, 0];
+    premultiply(&mut base);
+    let chain = mip_chain(&base, 2, 1);
+    let [r, g, b, a] = <[u8; 4]>::try_from(chain[1].2.as_slice()).unwrap();
+    assert_eq!(
+        (r, g, b),
+        (a, a, a),
+        "half-covered white stays white once un-premultiplied"
+    );
 }

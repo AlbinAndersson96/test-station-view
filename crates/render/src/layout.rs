@@ -20,6 +20,8 @@ pub const PLINTH_MM: f32 = 60.0;
 pub const HEADER_MM: f32 = 100.0;
 pub const PANEL_MM: f32 = 20.0;
 pub const PORT_PROTRUSION_MM: f32 = 6.0;
+/// The floor grid reaches this far beyond the racks on every side.
+pub const FLOOR_MARGIN_MM: f32 = 1500.0;
 /// Labels float this far in front of the surface they are printed on.
 pub const LABEL_OFFSET_MM: f32 = 1.0;
 

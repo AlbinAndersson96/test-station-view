@@ -1,10 +1,10 @@
 //! Pixel tests on a real (possibly software) GPU adapter. Skipped when none is available.
 
 use glam::{Vec2, Vec3};
-use tsv_render::camera::{FOV_Y, OrbitCamera};
+use tsv_render::camera::{FOV_Y, MAX_DISTANCE_MM, OrbitCamera};
 use tsv_render::gpu::{FrameStatus, Renderer};
-use tsv_render::layout::{Aabb, FaceRect};
-use tsv_render::scene::{BACKGROUND, BoxInstance, Label, Scene};
+use tsv_render::layout::{Aabb, FaceRect, LABEL_OFFSET_MM};
+use tsv_render::scene::{BACKGROUND, BoxInstance, Floor, Label, Scene};
 use tsv_render::text::TextRasterizer;
 
 const SIZE: u32 = 64;
@@ -81,7 +81,7 @@ fn draws_a_shaded_box_on_the_background() {
     let p = draw(&mut r, &scene);
     let [red, green, blue, _] = pixel(&p, 32, 32);
     assert!(
-        (195..=212).contains(&red) && green < 8 && blue < 8,
+        (184..=200).contains(&red) && green < 8 && blue < 8,
         "front face {red},{green},{blue}"
     );
     assert_eq!(pixel(&p, 2, 2), background());
@@ -130,6 +130,33 @@ fn selection_draws_a_glow_just_outside_the_box() {
         pixel(&p, 10, 32),
         background(),
         "glow fades within a few pixels"
+    );
+}
+
+#[test]
+fn selection_glow_follows_sub_pixel_edges() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let mm_per_px = 2.0 * camera().distance * (FOV_Y * 0.5).tan() / SIZE as f32;
+    // Both right edges stop short of pixel column 40's centre, so an aliased mask can't
+    // tell them apart.
+    let mut glow_for = |edge_px: f32| {
+        let mut aabb = red_box().aabb;
+        aabb.max.x = (edge_px - SIZE as f32 / 2.0) * mm_per_px;
+        let selected = BoxInstance { aabb, ..red_box() };
+        let scene = Scene {
+            opaque: vec![selected],
+            selected: vec![selected],
+            ..Default::default()
+        };
+        let p = draw(&mut r, &scene);
+        (40..44).map(|x| pixel(&p, x, 32)).collect::<Vec<_>>()
+    };
+    let near = glow_for(40.1);
+    let far = glow_for(40.45);
+    assert_ne!(
+        near, far,
+        "the glow ignores where the edge lies within a pixel"
     );
 }
 
@@ -218,4 +245,159 @@ fn resize_is_clamped_to_the_device_texture_limit() {
         r.render(&Scene::default(), &camera(), &mut SolidText),
         Ok(FrameStatus::Drawn)
     );
+}
+
+#[test]
+fn touching_boxes_of_one_colour_show_a_seam() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let grey = [0.6, 0.6, 0.6, 1.0];
+    let lower = BoxInstance {
+        aabb: Aabb::new(
+            Vec3::new(-100.0, -100.0, -100.0),
+            Vec3::new(100.0, 0.0, 0.0),
+        ),
+        color: grey,
+    };
+    let upper = BoxInstance {
+        aabb: Aabb::new(Vec3::new(-100.0, 0.0, -100.0), Vec3::new(100.0, 100.0, 0.0)),
+        color: grey,
+    };
+    let scene = Scene {
+        opaque: vec![lower, upper],
+        ..Default::default()
+    };
+    let p = draw(&mut r, &scene);
+    let face = pixel(&p, 32, 27)[0];
+    let seam = pixel(&p, 32, 31)[0].min(pixel(&p, 32, 32)[0]);
+    assert!(
+        u32::from(seam) + 20 < u32::from(face),
+        "seam {seam} is not darker than the face {face}"
+    );
+}
+
+/// The left half of every label is opaque white, the right half fully transparent black, as a
+/// browser canvas returns it.
+struct HalfWhiteText;
+
+impl TextRasterizer for HalfWhiteText {
+    fn rasterize(&mut self, _text: &str, width: u32, height: u32, _color: [u8; 4]) -> Vec<u8> {
+        (0..width * height)
+            .flat_map(|i| {
+                if i % width < width / 2 {
+                    [255; 4]
+                } else {
+                    [0; 4]
+                }
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn transparent_label_texels_do_not_darken_the_face() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let light = BoxInstance {
+        color: [0.9, 0.9, 0.9, 1.0],
+        ..red_box()
+    };
+    let label = Label {
+        text: "PSU".into(),
+        rect: FaceRect {
+            min: Vec2::splat(-100.0),
+            max: Vec2::splat(100.0),
+            z: 1.0,
+        },
+        color: [255, 255, 255, 255],
+    };
+    let scene = Scene {
+        opaque: vec![light],
+        labels: vec![label],
+        ..Default::default()
+    };
+    r.render(&scene, &camera(), &mut HalfWhiteText).unwrap();
+    let p = r.read_pixels().unwrap();
+    let face = pixel(&p, 38, 32)[0];
+    for x in 28..37 {
+        let [red, ..] = pixel(&p, x, 32);
+        assert!(
+            u32::from(red) + 3 >= u32::from(face),
+            "pixel {x} is {red}, darker than both the face ({face}) and the white text"
+        );
+    }
+}
+
+#[test]
+fn labels_stay_in_front_of_their_face_at_maximum_zoom_out() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let wall = BoxInstance {
+        aabb: Aabb::new(
+            Vec3::new(-5000.0, -5000.0, -100.0),
+            Vec3::new(5000.0, 5000.0, 0.0),
+        ),
+        color: [1.0, 0.0, 0.0, 1.0],
+    };
+    let label = Label {
+        text: "RACK".into(),
+        rect: FaceRect {
+            min: Vec2::splat(-3000.0),
+            max: Vec2::splat(3000.0),
+            z: LABEL_OFFSET_MM,
+        },
+        color: [0, 0, 255, 255],
+    };
+    let scene = Scene {
+        opaque: vec![wall],
+        labels: vec![label],
+        ..Default::default()
+    };
+    let far = OrbitCamera {
+        distance: MAX_DISTANCE_MM,
+        ..camera()
+    };
+    r.render(&scene, &far, &mut SolidText).unwrap();
+    let p = r.read_pixels().unwrap();
+    for (x, y) in [(32, 32), (30, 30), (34, 33), (31, 34)] {
+        assert_eq!(pixel(&p, x, y), [0, 0, 255, 255], "label hidden at {x},{y}");
+    }
+}
+
+#[test]
+fn the_floor_shows_grid_lines_that_fade_out_at_its_edge() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let scene = Scene {
+        floor: Some(Floor {
+            min: Vec2::splat(-1500.0),
+            max: Vec2::splat(1500.0),
+        }),
+        ..Default::default()
+    };
+    // Looking down at the origin, where the x = 0 and z = 0 grid lines cross.
+    let above = OrbitCamera {
+        pitch: 1.2,
+        distance: 2500.0,
+        ..camera()
+    };
+    r.render(&scene, &above, &mut SolidText).unwrap();
+    let p = r.read_pixels().unwrap();
+    let [red, ..] = pixel(&p, 32, 32);
+    assert!(
+        u32::from(red) + 10 < u32::from(BACKGROUND.r),
+        "no grid line at the origin: {red}"
+    );
+    assert_eq!(
+        pixel(&p, 1, 1),
+        background(),
+        "the floor fades out at its edge"
+    );
+    // From below, the floor is not drawn.
+    let below = OrbitCamera {
+        pitch: -1.2,
+        ..above
+    };
+    r.render(&scene, &below, &mut SolidText).unwrap();
+    assert_eq!(pixel(&r.read_pixels().unwrap(), 32, 32), background());
 }

@@ -211,3 +211,21 @@ fn selecting_a_device_shows_all_its_port_names() {
     );
     assert!(!shown.contains(&"X1"), "other devices' ports stay hidden");
 }
+
+#[test]
+fn the_floor_extends_a_margin_beyond_every_rack() {
+    let d = doc(vec![rack("A", 42, vec![]), rack("B", 24, vec![])]);
+    let l = limits();
+    let floor = build_scene(&input(&d, &l), &Motion::default())
+        .floor
+        .unwrap();
+    let bounds = scene_bounds(&d);
+    assert_eq!(
+        floor.min,
+        glam::Vec2::new(bounds.min.x, bounds.min.z) - FLOOR_MARGIN_MM
+    );
+    assert_eq!(
+        floor.max,
+        glam::Vec2::new(bounds.max.x, bounds.max.z) + FLOOR_MARGIN_MM
+    );
+}
