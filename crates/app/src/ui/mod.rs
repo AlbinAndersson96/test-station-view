@@ -1,6 +1,7 @@
 //! The Leptos user interface (browser only).
 
 mod core;
+mod icons;
 mod panels;
 mod toolbar;
 mod tree;
@@ -64,9 +65,16 @@ fn App() -> impl IntoView {
 
     move || {
         match status.get() {
-        Status::Starting => view! { <div class="splash">"Loading…"</div> }.into_any(),
+        Status::Starting => view! {
+            <div class="splash">
+                <div class="spinner" aria-hidden="true"></div>
+                <p>"Loading TestStationView…"</p>
+            </div>
+        }
+            .into_any(),
         Status::NoWebGpu => view! {
             <div class="splash">
+                <div class="splash-mark"><icons::Icon d=icons::WARNING /></div>
                 <h1>"WebGPU is required"</h1>
                 <p>"TestStationView needs a browser with WebGPU, such as a current Chrome, Edge or Firefox on Windows."</p>
             </div>
@@ -76,7 +84,10 @@ fn App() -> impl IntoView {
             <div class="app" on:pointerdown=move |_| signals().menu.set(None)>
                 <toolbar::Toolbar />
                 <aside class="sidebar">
-                    <section class="panel tree-panel"><tree::Tree /></section>
+                    <section class="panel tree-panel">
+                        <h2>"Explorer"</h2>
+                        <tree::Tree />
+                    </section>
                     <panels::Properties />
                     <panels::NewDeviceForm />
                     <panels::NewPortForm />

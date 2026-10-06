@@ -3,7 +3,9 @@
 use leptos::prelude::*;
 use tsv_core::edit::ObjectId;
 
+use crate::forms::color_to_input;
 use crate::ui::core::{Menu, MenuOrigin, RenameTarget, now_s, read, signals, update};
+use crate::ui::icons::{self, Icon};
 
 /// One row of the tree, flattened for rendering.
 #[derive(Clone, PartialEq)]
@@ -15,6 +17,8 @@ struct Row {
     rack_index: Option<usize>,
     /// `Some(expanded)` for rows that have children.
     expander: Option<bool>,
+    /// A device's colour, as CSS, shown as a swatch in place of an icon.
+    swatch: Option<String>,
 }
 
 /// DOM id of an object's tree row (for scrolling it into view).
@@ -50,6 +54,7 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
             depth: 0,
             rack_index: None,
             expander: None,
+            swatch: None,
         }];
         for (ri, rack) in doc.racks.iter().enumerate() {
             let rack_id = ObjectId::Rack(rack.id);
@@ -61,6 +66,7 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
                 depth: 1,
                 rack_index: Some(ri),
                 expander: (!rack.devices.is_empty()).then_some(rack_open),
+                swatch: None,
             });
             if !rack_open {
                 continue;
@@ -75,6 +81,7 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
                     depth: 2,
                     rack_index: None,
                     expander: (!device.ports.is_empty()).then_some(device_open),
+                    swatch: Some(color_to_input(device.color)),
                 });
                 if !device_open {
                     continue;
@@ -87,6 +94,7 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
                         depth: 3,
                         rack_index: None,
                         expander: None,
+                        swatch: None,
                     });
                 }
             }
@@ -136,7 +144,9 @@ pub fn Tree() -> impl IntoView {
                     .collect_view()
             }}
         </ul>
-        <button class="add-rack" on:click=move |_| update(|s| s.add_rack())>"Add rack"</button>
+        <button class="add-rack" on:click=move |_| update(|s| s.add_rack())>
+            <Icon d=icons::PLUS />"Add rack"
+        </button>
     }
 }
 
@@ -177,31 +187,39 @@ fn TreeRow(row: Row, selected: bool, collapsed: RwSignal<Vec<ObjectId>>) -> impl
     };
 
     let dom_id = object.map(row_id);
-    let expander = row.expander.map(|open| {
-        let toggle = move |ev: leptos::ev::MouseEvent| {
-            ev.stop_propagation();
-            if let Some(id) = object {
-                collapsed.update(|c| {
-                    if open {
-                        c.push(id);
-                    } else {
-                        c.retain(|x| *x != id);
-                    }
-                });
+    let open = row.expander;
+    // Built on each render: the icon view can't be cloned. Rows without children get a spacer
+    // in its place so labels line up.
+    let expander = move || match open {
+        Some(open) => {
+            let toggle = move |ev: leptos::ev::MouseEvent| {
+                ev.stop_propagation();
+                if let Some(id) = object {
+                    collapsed.update(|c| {
+                        if open {
+                            c.push(id);
+                        } else {
+                            c.retain(|x| *x != id);
+                        }
+                    });
+                }
+            };
+            view! {
+                <button class="expander" class:open=open aria-label=if open { "Collapse" } else { "Expand" } on:click=toggle>
+                    <Icon d=icons::CHEVRON />
+                </button>
             }
-        };
-        view! {
-            <button class="expander" aria-label=if open { "Collapse" } else { "Expand" } on:click=toggle>
-                {if open { "▾" } else { "▸" }}
-            </button>
+                .into_any()
         }
-    });
+        None => view! { <span class="expander-space"></span> }.into_any(),
+    };
+    let swatch = row.swatch.clone();
     view! {
         <li
             id=dom_id
             class="tree-row"
             class:selected=selected
-            style:padding-left=format!("{}px", 8 + row.depth * 16)
+            style:padding-left=format!("{}px", 4 + row.depth * 14)
             draggable=if rack_id.is_some() { "true" } else { "false" }
             on:click=on_click
             on:dblclick=on_dblclick
@@ -233,13 +251,31 @@ fn TreeRow(row: Row, selected: bool, collapsed: RwSignal<Vec<ObjectId>>) -> impl
                     view! { <InlineRename target=target initial=label.clone() /> }.into_any()
                 } else {
                     view! {
-                        <span class="tree-label">{expander.clone()}{label.clone()}</span>
-                        <span class="tree-detail">{row.detail.clone()}</span>
+                        <span class="tree-label">
+                            {expander()}
+                            {glyph(swatch.clone(), object)}
+                            <span class="tree-name">{label.clone()}</span>
+                        </span>
+                        {(!row.detail.is_empty()).then(|| view! { <span class="tree-detail">{row.detail.clone()}</span> })}
                     }
                         .into_any()
                 }
             }}
         </li>
+    }
+}
+
+/// The icon before a row's name: a device's colour swatch, or its kind of object.
+fn glyph(swatch: Option<String>, object: Option<ObjectId>) -> AnyView {
+    match (swatch, object) {
+        (Some(color), _) => {
+            view! { <span class="swatch" style:background=color></span> }.into_any()
+        }
+        (None, None) => view! { <span class="kind"><Icon d=icons::DOCUMENT /></span> }.into_any(),
+        (None, Some(ObjectId::Rack(_))) => {
+            view! { <span class="kind"><Icon d=icons::RACK /></span> }.into_any()
+        }
+        (None, Some(_)) => view! { <span class="kind"><Icon d=icons::PORT /></span> }.into_any(),
     }
 }
 

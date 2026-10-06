@@ -12,6 +12,7 @@ use crate::session::DeleteOutcome;
 use crate::ui::core::{
     Dialog, Menu, MenuOrigin, RenameTarget, core, now_s, read, request_frame, signals, update,
 };
+use crate::ui::icons::{self, Icon};
 
 /// Canvas-relative position of a pointer event (CSS px) and whether it is over the trash zone.
 pub fn pointer_info(client_x: i32, client_y: i32) -> (Vec2, bool) {
@@ -176,13 +177,13 @@ pub fn Viewport() -> impl IntoView {
                 class:visible=move || sig.dragging.get()
                 class:hot=move || sig.over_trash.get()
             >
-                "Drop here to delete"
+                <Icon d=icons::TRASH />"Drop here to delete"
             </div>
             <ControlsHelp />
             {move || {
                 sig.rev.track();
                 read(|s| s.banner().map(str::to_string))
-                    .map(|text| view! { <div class="banner">{text}</div> })
+                    .map(|text| view! { <div class="banner" role="status"><Icon d=icons::WARNING />{text}</div> })
             }}
             {move || sig.menu.get().map(|menu| view! { <ContextMenu menu=menu /> })}
         </div>
@@ -205,10 +206,10 @@ pub fn ControlsHelp() -> impl IntoView {
             <div class="controls-help-panel">
                 {LINES
                     .iter()
-                    .map(|(input, action)| view! { <div><b>{*input}":"</b>" "{*action}</div> })
+                    .map(|(input, action)| view! { <kbd>{*input}</kbd><span>{*action}</span> })
                     .collect_view()}
             </div>
-            <div class="controls-help-toggle">"?"</div>
+            <div class="controls-help-toggle" aria-label="Mouse controls"><Icon d=icons::HELP /></div>
         </div>
     }
 }
@@ -222,8 +223,8 @@ pub fn ContextMenu(menu: Menu) -> impl IntoView {
             style:top=format!("{}px", menu.y)
             on:pointerdown=|ev: leptos::ev::PointerEvent| ev.stop_propagation()
         >
-            <button on:click=move |_| menu_rename(menu)>"Rename"</button>
-            <button on:click=move |_| menu_delete(menu)>"Delete"</button>
+            <button on:click=move |_| menu_rename(menu)><Icon d=icons::RENAME />"Rename"</button>
+            <button class="menu-danger" on:click=move |_| menu_delete(menu)><Icon d=icons::TRASH />"Delete"</button>
         </div>
     }
 }

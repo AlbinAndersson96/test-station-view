@@ -5,6 +5,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
 use crate::ui::core::{Dialog, now_s, read, save_now, signals, update};
+use crate::ui::icons::{self, Icon};
 
 /// Offers `text` to the user as a file download named `file_name`.
 pub fn download(file_name: &str, text: &str) {
@@ -81,26 +82,47 @@ pub fn Toolbar() -> impl IntoView {
     };
     view! {
         <header class="toolbar">
-            <span class="app-name">"TestStationView"</span>
-            <button on:click=move |_| sig.dialog.set(Some(Dialog::ConfirmNew))>"New"</button>
-            <button on:click=move |_| {
-                if let Some(input) = file_ref.get() {
-                    input.click();
-                }
-            }>"Import"</button>
-            <input node_ref=file_ref type="file" accept=".json,application/json" hidden on:change=on_file />
-            <button on:click=move |_| {
-                let (name, json) = read(|s| s.export());
-                download(&name, &json);
-            }>"Export"</button>
+            <span class="brand">
+                <span class="brand-mark"><Icon d=icons::LOGO /></span>
+                <span class="app-name">"TestStationView"</span>
+            </span>
+            <div class="tool-group">
+                <button class="ghost" title="New document" on:click=move |_| sig.dialog.set(Some(Dialog::ConfirmNew))>
+                    <Icon d=icons::NEW />"New"
+                </button>
+                <button class="ghost" title="Import a document from a file" on:click=move |_| {
+                    if let Some(input) = file_ref.get() {
+                        input.click();
+                    }
+                }>
+                    <Icon d=icons::IMPORT />"Import"
+                </button>
+                <input node_ref=file_ref type="file" accept=".json,application/json" hidden on:change=on_file />
+                <button class="ghost" title="Download the document as JSON" on:click=move |_| {
+                    let (name, json) = read(|s| s.export());
+                    download(&name, &json);
+                }>
+                    <Icon d=icons::EXPORT />"Export"
+                </button>
+            </div>
             <span class="separator"></span>
-            <button prop:disabled=move || !can_undo() on:click=move |_| update(|s| s.undo())>"Undo"</button>
-            <button prop:disabled=move || !can_redo() on:click=move |_| update(|s| s.redo())>"Redo"</button>
+            <div class="tool-group">
+                <button class="ghost icon-only" title="Undo (Ctrl+Z)" aria-label="Undo"
+                    prop:disabled=move || !can_undo() on:click=move |_| update(|s| s.undo())>
+                    <Icon d=icons::UNDO />
+                </button>
+                <button class="ghost icon-only" title="Redo (Ctrl+Y)" aria-label="Redo"
+                    prop:disabled=move || !can_redo() on:click=move |_| update(|s| s.redo())>
+                    <Icon d=icons::REDO />
+                </button>
+            </div>
             <span class="separator"></span>
-            <button on:click=move |_| update(|s| s.reset_view(now_s()))>"Reset view"</button>
-            <a class="repo-link" href=REPO_URL target="_blank" rel="noopener noreferrer">
-                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                    <path fill="currentColor" d=GITHUB_MARK />
+            <button class="ghost" title="Return to the front view of all racks" on:click=move |_| update(|s| s.reset_view(now_s()))>
+                <Icon d=icons::RESET_VIEW />"Reset view"
+            </button>
+            <a class="repo-link" href=REPO_URL target="_blank" rel="noopener noreferrer" title="Source on GitHub">
+                <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+                    <path fill="currentColor" stroke="none" d=GITHUB_MARK />
                 </svg>
                 "GitHub"
             </a>
@@ -196,7 +218,7 @@ pub fn DialogHost() -> impl IntoView {
             <div class="modal-backdrop">
                 <div class="modal" role="dialog" aria-modal="true">
                     <h2>{title}</h2>
-                    <p>{message}</p>
+                    <p class="modal-message">{message}</p>
                     <div class="modal-actions">{actions}</div>
                 </div>
             </div>

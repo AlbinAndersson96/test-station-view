@@ -10,6 +10,7 @@ use crate::forms::{
 };
 use crate::interaction::DragSource;
 use crate::ui::core::{now_s, read, signals, update};
+use crate::ui::icons::{self, Icon};
 use crate::ui::viewport::{forward_cancel, forward_move, forward_up};
 
 /// What the properties panel shows for the current selection.
@@ -106,7 +107,7 @@ pub fn Properties() -> impl IntoView {
                                 }
                             />
                         </label>
-                        <div class="field"><span>"Position"</span><span>{position}</span></div>
+                        <div class="field"><span>"Position"</span><span class="badge">{position}</span></div>
                     }
                         .into_any(),
                     Selected::Port { id, name } => view! {
@@ -243,7 +244,7 @@ pub fn NewDeviceForm() -> impl IntoView {
                 on:pointercancel=move |_| forward_cancel()
                 on:lostpointercapture=move |_| forward_cancel()
             >
-                "⠿ Drag into a rack"
+                <Icon d=icons::GRIP />"Drag into a rack"
             </div>
         </section>
     }
@@ -272,7 +273,9 @@ pub fn NewPortForm() -> impl IntoView {
             <h2>"New port"</h2>
             <div class="field">
                 <span>"Device"</span>
-                <span>{move || device().map_or("—".to_string(), |(_, n)| n)}</span>
+                <span class="target-device" class:empty=move || device().is_none()>
+                    {move || device().map_or("Select a device".to_string(), |(_, n)| n)}
+                </span>
             </div>
             <label class="field">
                 <span>"Name"</span>
@@ -296,7 +299,7 @@ pub fn NewPortForm() -> impl IntoView {
                 on:pointercancel=move |_| forward_cancel()
                 on:lostpointercapture=move |_| forward_cancel()
             >
-                "⠿ Drag onto the device"
+                <Icon d=icons::GRIP />"Drag onto the device"
             </div>
         </section>
     }
