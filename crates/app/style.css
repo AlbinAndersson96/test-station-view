@@ -35,6 +35,8 @@ input[type="color"] { padding: 0; height: 28px; }
 .toolbar { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .app-name { font-weight: 600; margin-right: 12px; }
 .separator { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+.repo-link { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); text-decoration: none; }
+.repo-link:hover { background: var(--bg); }
 
 .sidebar { overflow-y: auto; background: var(--bg); border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
@@ -60,6 +62,10 @@ input[type="color"] { padding: 0; height: 28px; }
 .trash.visible { display: block; }
 .trash.hot { background: var(--danger); color: #fff; }
 .banner { position: absolute; left: 16px; right: 16px; top: 12px; padding: 8px 12px; background: #fff4e5; border: 1px solid #f0b55e; border-radius: 6px; }
+.controls-help { position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.controls-help-toggle { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--muted); font-weight: 600; cursor: default; user-select: none; }
+.controls-help-panel { display: none; padding: 8px 12px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--line); border-radius: 6px; line-height: 1.6; white-space: nowrap; }
+.controls-help:hover .controls-help-panel { display: block; }
 
 .context-menu { position: fixed; z-index: 10; display: flex; flex-direction: column; min-width: 120px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); padding: 4px; }
 .context-menu button { border: none; text-align: left; }

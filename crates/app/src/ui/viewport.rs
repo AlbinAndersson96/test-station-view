@@ -178,12 +178,37 @@ pub fn Viewport() -> impl IntoView {
             >
                 "Drop here to delete"
             </div>
+            <ControlsHelp />
             {move || {
                 sig.rev.track();
                 read(|s| s.banner().map(str::to_string))
                     .map(|text| view! { <div class="banner">{text}</div> })
             }}
             {move || sig.menu.get().map(|menu| view! { <ContextMenu menu=menu /> })}
+        </div>
+    }
+}
+
+/// The mouse controls, shown while the pointer is over the "?" in the corner of the view.
+#[component]
+pub fn ControlsHelp() -> impl IntoView {
+    const LINES: [(&str, &str); 6] = [
+        ("Left-drag", "rotate"),
+        ("Middle-drag", "pan"),
+        ("Wheel", "zoom"),
+        ("Left-drag a device/port", "move it"),
+        ("Double-click", "focus"),
+        ("Right-click", "rename/delete"),
+    ];
+    view! {
+        <div class="controls-help">
+            <div class="controls-help-panel">
+                {LINES
+                    .iter()
+                    .map(|(input, action)| view! { <div><b>{*input}":"</b>" "{*action}</div> })
+                    .collect_view()}
+            </div>
+            <div class="controls-help-toggle">"?"</div>
         </div>
     }
 }
