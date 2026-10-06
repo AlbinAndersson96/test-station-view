@@ -54,6 +54,13 @@ impl OrbitCamera {
         Self::projection(aspect) * self.view()
     }
 
+    /// `view_proj` with reversed depth (near plane → 1, far plane → 0) for the renderer's
+    /// floating-point depth buffer, which keeps depth precise far from the camera. Picking
+    /// uses `view_proj`.
+    pub fn depth_view_proj(&self, aspect: f32) -> Mat4 {
+        directx::perspective(FOV_Y, aspect.max(0.01), FAR_MM, NEAR_MM) * self.view()
+    }
+
     /// Rotates around the target; `dx`/`dy` are pointer deltas in pixels.
     pub fn orbit(&mut self, dx: f32, dy: f32) {
         self.yaw -= dx * ORBIT_SPEED;

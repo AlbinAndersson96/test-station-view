@@ -20,6 +20,8 @@ struct BoxOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) color: vec4<f32>,
+    // Position within the unit cube (0..1 on each axis), for edge lines.
+    @location(2) local: vec3<f32>,
 };
 
 @vertex
@@ -29,13 +31,32 @@ fn vs_box(v: BoxIn) -> BoxOut {
     out.clip = globals.view_proj * vec4<f32>(world, 1.0);
     out.normal = v.normal;
     out.color = v.color;
+    out.local = v.position;
     return out;
 }
 
+// Width of the edge lines in pixels. Edges darken light faces and lighten dark ones.
+const EDGE_PX: f32 = 1.0;
+const EDGE_DARKEN: f32 = 0.6;
+const EDGE_LIGHTEN: f32 = 0.3;
+const DARK_LUMINANCE: f32 = 0.3;
+
 @fragment
 fn fs_box(in: BoxOut) -> @location(0) vec4<f32> {
-    let light = 0.55 + 0.45 * max(dot(normalize(in.normal), globals.light_dir.xyz), 0.0);
-    return vec4<f32>(in.color.rgb * light, in.color.a);
+    let light = 0.5 + 0.5 * max(dot(normalize(in.normal), globals.light_dir.xyz), 0.0);
+    let lit = in.color.rgb * light;
+    // Distance in pixels to the face's nearest edge, ignoring the axis along the normal.
+    let per_px = max(fwidth(in.local), vec3<f32>(1e-6));
+    let in_plane = abs(in.normal) < vec3<f32>(0.5);
+    let to_edge = select(vec3<f32>(1e9), min(in.local, 1.0 - in.local) / per_px, in_plane);
+    let edge_px = min(to_edge.x, min(to_edge.y, to_edge.z));
+    // Faces only a few pixels across would be all edge, so their lines fade out.
+    let across = select(vec3<f32>(1e9), 1.0 / per_px, in_plane);
+    let fade = smoothstep(4.0, 12.0, min(across.x, min(across.y, across.z)));
+    let edge = (1.0 - smoothstep(EDGE_PX - 0.5, EDGE_PX + 0.5, edge_px)) * fade;
+    let dark = dot(lit, vec3<f32>(0.2126, 0.7152, 0.0722)) < DARK_LUMINANCE;
+    let edge_color = select(lit * EDGE_DARKEN, mix(lit, vec3<f32>(1.0), EDGE_LIGHTEN), dark);
+    return vec4<f32>(mix(lit, edge_color, edge), in.color.a);
 }
 
 @fragment

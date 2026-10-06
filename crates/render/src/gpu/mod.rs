@@ -9,7 +9,7 @@ use glam::Vec3;
 
 use crate::camera::OrbitCamera;
 use crate::scene::{BACKGROUND, BoxInstance, Label, Scene};
-use crate::text::{TextRasterizer, label_texture_size, mip_chain};
+use crate::text::{TextRasterizer, label_texture_size, mip_chain, premultiply};
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
@@ -329,7 +329,8 @@ impl Renderer {
         let depth_state = |write: bool| wgpu::DepthStencilState {
             format: DEPTH_FORMAT,
             depth_write_enabled: Some(write),
-            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            // Reversed Z: nearer is greater.
+            depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         };
@@ -422,7 +423,11 @@ impl Renderer {
             &label_buffers,
             strip,
             Some(depth_state(false)),
-            blended_target.clone(),
+            wgpu::ColorTargetState {
+                // Label textures are premultiplied on upload.
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                ..blended_target.clone()
+            },
             SAMPLE_COUNT,
         );
         let outline_pipeline = pipeline(
@@ -547,9 +552,10 @@ impl Renderer {
         };
 
         let aspect = self.width as f32 / self.height as f32;
-        let light = Vec3::new(0.4, 0.8, 0.6).normalize();
+        // From above, in front and to the left, so front, sides and top all differ.
+        let light = Vec3::new(-0.3, 0.8, 0.5).normalize();
         let globals = Globals {
-            view_proj: camera.view_proj(aspect).to_cols_array_2d(),
+            view_proj: camera.depth_view_proj(aspect).to_cols_array_2d(),
             light_dir: [light.x, light.y, light.z, 0.0],
         };
         self.queue
@@ -594,7 +600,7 @@ impl Renderer {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.targets.depth,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
+                        load: wgpu::LoadOp::Clear(0.0),
                         store: wgpu::StoreOp::Discard,
                     }),
                     stencil_ops: None,
@@ -772,7 +778,8 @@ impl Renderer {
             let bind = match self.labels.remove(&key).or_else(|| used.get(&key).cloned()) {
                 Some(bind) => bind,
                 None => {
-                    let pixels = text.rasterize(&label.text, width, height, label.color);
+                    let mut pixels = text.rasterize(&label.text, width, height, label.color);
+                    premultiply(&mut pixels);
                     self.create_label_bind(&pixels, width, height)
                 }
             };

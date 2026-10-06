@@ -41,12 +41,8 @@ belongs.
   `hit_aabb` treats NaN as a hit. Return `None` when the ray is not finite.
 - **`port_drop_target` panics if `Limits::port_cols` or `port_rows_per_u` is 0.** The
   subtraction overflows. Use `saturating_sub`, as `layout.rs` already does.
-- **Labels can z-fight with their face when zoomed far out.** The 1 mm offset falls below depth
-  precision near the maximum distance. Use reversed-Z or a depth bias on the label pipeline.
 - **`Renderer::new_offscreen(0, 0)` panics.** Only tests use it. Clamp to 1 × 1 as `resize`
   does.
-- **Dark fringes on white label text.** Labels use straight alpha with linear filtering.
-  Premultiply on upload and use premultiplied blending.
 - **Per-frame GPU churn.** Every frame creates its instance buffers anew and switches a bind
   group per label (about 500 at most). This is fine at the spec's scale. Persistent growable
   buffers and a label atlas would remove it.
