@@ -75,6 +75,13 @@ struct LabelRaw {
     z: f32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct FloorRaw {
+    /// min x, min z, max x, max z.
+    rect: [f32; 4],
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct LabelKey {
     text: String,
@@ -109,6 +116,7 @@ pub struct Renderer {
     ghost_pipeline: wgpu::RenderPipeline,
     mask_pipeline: wgpu::RenderPipeline,
     label_pipeline: wgpu::RenderPipeline,
+    floor_pipeline: wgpu::RenderPipeline,
     outline_pipeline: wgpu::RenderPipeline,
     label_layout: wgpu::BindGroupLayout,
     outline_layout: wgpu::BindGroupLayout,
@@ -430,6 +438,26 @@ impl Renderer {
             },
             SAMPLE_COUNT,
         );
+        let floor_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<FloorRaw>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x4],
+        })];
+        let floor_pipeline = pipeline(
+            "floor",
+            &box_layout,
+            "vs_floor",
+            "fs_floor",
+            &floor_buffers,
+            // Faces up: the floor is hidden from below.
+            wgpu::PrimitiveState {
+                cull_mode: Some(wgpu::Face::Back),
+                ..strip
+            },
+            Some(depth_state(false)),
+            blended_target.clone(),
+            SAMPLE_COUNT,
+        );
         let outline_pipeline = pipeline(
             "outline",
             &outline_pipeline_layout,
@@ -468,6 +496,7 @@ impl Renderer {
             ghost_pipeline,
             mask_pipeline,
             label_pipeline,
+            floor_pipeline,
             outline_pipeline,
             label_layout,
             outline_layout,
@@ -574,6 +603,14 @@ impl Renderer {
             })
             .collect();
         let label_buffer = self.vertex_buffer("labels", bytemuck::cast_slice(&label_raw));
+        let floor_raw: Vec<FloorRaw> = scene
+            .floor
+            .iter()
+            .map(|f| FloorRaw {
+                rect: [f.min.x, f.min.y, f.max.x, f.max.y],
+            })
+            .collect();
+        let floor_buffer = self.vertex_buffer("floor", bytemuck::cast_slice(&floor_raw));
 
         let mut encoder = self
             .device
@@ -615,6 +652,11 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.cube.slice(..));
                 pass.set_vertex_buffer(1, buffer.slice(..));
                 pass.draw(0..36, 0..scene.opaque.len() as u32);
+            }
+            if let Some(buffer) = &floor_buffer {
+                pass.set_pipeline(&self.floor_pipeline);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..4, 0..1);
             }
             if let Some(buffer) = &label_buffer {
                 pass.set_pipeline(&self.label_pipeline);

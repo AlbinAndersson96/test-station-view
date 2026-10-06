@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use tsv_core::edit::ObjectId;
 use tsv_core::ids::PortId;
 use tsv_core::limits::Limits;
@@ -10,8 +10,8 @@ use tsv_core::model::{Document, Rgb};
 use tsv_core::port_grid::Cell;
 
 use crate::layout::{
-    Aabb, FaceRect, device_box, device_name_rect, port_label_rect, port_marker_box, rack_name_rect,
-    rack_parts, u_label_rect,
+    Aabb, FLOOR_MARGIN_MM, FaceRect, device_box, device_name_rect, port_label_rect,
+    port_marker_box, rack_name_rect, rack_parts, scene_bounds, u_label_rect,
 };
 
 pub const BACKGROUND: Rgb = Rgb {
@@ -76,6 +76,15 @@ pub struct Scene {
     /// Boxes that get the selection outline.
     pub selected: Vec<BoxInstance>,
     pub labels: Vec<Label>,
+    /// The floor grid under the racks; `None` draws no floor.
+    pub floor: Option<Floor>,
+}
+
+/// A floor rectangle at y = 0, in world x (`.x`) and z (`.y`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Floor {
+    pub min: Vec2,
+    pub max: Vec2,
 }
 
 pub fn rgba(c: Rgb, alpha: f32) -> [f32; 4] {
@@ -166,6 +175,11 @@ impl Motion {
 pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
     let mut scene = Scene::default();
     let doc = input.document;
+    let bounds = scene_bounds(doc);
+    scene.floor = Some(Floor {
+        min: Vec2::new(bounds.min.x, bounds.min.z) - FLOOR_MARGIN_MM,
+        max: Vec2::new(bounds.max.x, bounds.max.z) + FLOOR_MARGIN_MM,
+    });
     for (ri, rack) in doc.racks.iter().enumerate() {
         let rack_selected = input.selection == Some(ObjectId::Rack(rack.id));
         for part in rack_parts(ri, rack) {

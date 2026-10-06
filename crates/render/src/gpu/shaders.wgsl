@@ -95,6 +95,46 @@ fn fs_label(in: LabelOut) -> @location(0) vec4<f32> {
     return textureSample(label_texture, label_sampler, in.uv);
 }
 
+struct FloorOut {
+    @builtin(position) clip: vec4<f32>,
+    // World x and z.
+    @location(0) world: vec2<f32>,
+    // min x, min z, max x, max z of the floor.
+    @location(1) rect: vec4<f32>,
+};
+
+// Four vertices as a triangle strip at y = 0, counter-clockwise seen from above.
+@vertex
+fn vs_floor(@builtin(vertex_index) index: u32, @location(0) rect: vec4<f32>) -> FloorOut {
+    let x = mix(rect.x, rect.z, f32(index & 1u));
+    let z = mix(rect.w, rect.y, f32(index >> 1u));
+    var out: FloorOut;
+    out.clip = globals.view_proj * vec4<f32>(x, 0.0, z, 1.0);
+    out.world = vec2<f32>(x, z);
+    out.rect = rect;
+    return out;
+}
+
+const GRID_MM: f32 = 1000.0;
+// The grid fades out over this distance towards the floor's edge.
+const FLOOR_FADE_MM: f32 = 1000.0;
+const GRID_COLOR: vec3<f32> = vec3<f32>(0.42, 0.46, 0.52);
+const GRID_ALPHA: f32 = 0.5;
+
+// Anti-aliased lines every GRID_MM.
+@fragment
+fn fs_floor(in: FloorOut) -> @location(0) vec4<f32> {
+    let cell = in.world / GRID_MM;
+    let per_px = max(fwidth(cell), vec2<f32>(1e-6));
+    let to_line = abs(fract(cell + 0.5) - 0.5) / per_px;
+    let line = 1.0 - smoothstep(0.0, 1.0, min(to_line.x, to_line.y));
+    // Lines only a few pixels apart (far away or at grazing angles) would shimmer.
+    let dense = 1.0 - smoothstep(0.1, 0.35, max(per_px.x, per_px.y));
+    let to_edge = min(in.world - in.rect.xy, in.rect.zw - in.world);
+    let edge = smoothstep(0.0, FLOOR_FADE_MM, min(to_edge.x, to_edge.y));
+    return vec4<f32>(GRID_COLOR, line * dense * edge * GRID_ALPHA);
+}
+
 @group(0) @binding(0) var selection_mask: texture_2d<f32>;
 
 @vertex

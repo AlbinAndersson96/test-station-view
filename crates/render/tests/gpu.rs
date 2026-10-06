@@ -4,7 +4,7 @@ use glam::{Vec2, Vec3};
 use tsv_render::camera::{FOV_Y, MAX_DISTANCE_MM, OrbitCamera};
 use tsv_render::gpu::{FrameStatus, Renderer};
 use tsv_render::layout::{Aabb, FaceRect, LABEL_OFFSET_MM};
-use tsv_render::scene::{BACKGROUND, BoxInstance, Label, Scene};
+use tsv_render::scene::{BACKGROUND, BoxInstance, Floor, Label, Scene};
 use tsv_render::text::TextRasterizer;
 
 const SIZE: u32 = 64;
@@ -362,4 +362,42 @@ fn labels_stay_in_front_of_their_face_at_maximum_zoom_out() {
     for (x, y) in [(32, 32), (30, 30), (34, 33), (31, 34)] {
         assert_eq!(pixel(&p, x, y), [0, 0, 255, 255], "label hidden at {x},{y}");
     }
+}
+
+#[test]
+fn the_floor_shows_grid_lines_that_fade_out_at_its_edge() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let scene = Scene {
+        floor: Some(Floor {
+            min: Vec2::splat(-1500.0),
+            max: Vec2::splat(1500.0),
+        }),
+        ..Default::default()
+    };
+    // Looking down at the origin, where the x = 0 and z = 0 grid lines cross.
+    let above = OrbitCamera {
+        pitch: 1.2,
+        distance: 2500.0,
+        ..camera()
+    };
+    r.render(&scene, &above, &mut SolidText).unwrap();
+    let p = r.read_pixels().unwrap();
+    let [red, ..] = pixel(&p, 32, 32);
+    assert!(
+        u32::from(red) + 10 < u32::from(BACKGROUND.r),
+        "no grid line at the origin: {red}"
+    );
+    assert_eq!(
+        pixel(&p, 1, 1),
+        background(),
+        "the floor fades out at its edge"
+    );
+    // From below, the floor is not drawn.
+    let below = OrbitCamera {
+        pitch: -1.2,
+        ..above
+    };
+    r.render(&scene, &below, &mut SolidText).unwrap();
+    assert_eq!(pixel(&r.read_pixels().unwrap(), 32, 32), background());
 }

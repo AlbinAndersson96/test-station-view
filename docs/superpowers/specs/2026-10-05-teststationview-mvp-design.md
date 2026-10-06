@@ -226,6 +226,8 @@ teststationview/
   - Device: a box in its colour with its name printed on the front face.
   - Port: a small marker in its cell. Its name appears beside/under it only while the port is
     hovered or selected, or while its device is selected (then all the device's port names show).
+  - Floor: a faint 1 m grid at y = 0 under the racks, reaching 1.5 m beyond them and fading out
+    towards its edge. It is hidden from below.
 - **Geometry:** one unit-cube mesh drawn instanced (transform, colour and flags per instance).
 - **Text:** strings are rasterised on an offscreen browser 2D canvas, uploaded as textures and
   drawn as quads just in front of the face. Text auto-scales to fit and is black or white depending
