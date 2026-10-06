@@ -60,6 +60,10 @@ input[type="color"] { padding: 0; height: 28px; }
 .trash.visible { display: block; }
 .trash.hot { background: var(--danger); color: #fff; }
 .banner { position: absolute; left: 16px; right: 16px; top: 12px; padding: 8px 12px; background: #fff4e5; border: 1px solid #f0b55e; border-radius: 6px; }
+.controls-help { position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.controls-help-toggle { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--muted); font-weight: 600; cursor: default; user-select: none; }
+.controls-help-panel { display: none; padding: 8px 12px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--line); border-radius: 6px; line-height: 1.6; white-space: nowrap; }
+.controls-help:hover .controls-help-panel { display: block; }
 
 .context-menu { position: fixed; z-index: 10; display: flex; flex-direction: column; min-width: 120px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); padding: 4px; }
 .context-menu button { border: none; text-align: left; }
