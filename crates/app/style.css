@@ -35,6 +35,8 @@ input[type="color"] { padding: 0; height: 28px; }
 .toolbar { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .app-name { font-weight: 600; margin-right: 12px; }
 .separator { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+.repo-link { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); text-decoration: none; }
+.repo-link:hover { background: var(--bg); }
 
 .sidebar { overflow-y: auto; background: var(--bg); border-right: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
