@@ -1,7 +1,7 @@
 //! Pixel tests on a real (possibly software) GPU adapter. Skipped when none is available.
 
 use glam::{Vec2, Vec3};
-use tsv_render::camera::OrbitCamera;
+use tsv_render::camera::{FOV_Y, OrbitCamera};
 use tsv_render::gpu::{FrameStatus, Renderer};
 use tsv_render::layout::{Aabb, FaceRect};
 use tsv_render::scene::{BACKGROUND, BoxInstance, Label, Scene};
@@ -85,6 +85,26 @@ fn draws_a_shaded_box_on_the_background() {
         "front face {red},{green},{blue}"
     );
     assert_eq!(pixel(&p, 2, 2), background());
+}
+
+#[test]
+fn box_edges_are_anti_aliased() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    // Put the right edge a quarter of the way into pixel column 40: only some samples cover it.
+    let mm_per_px = 2.0 * camera().distance * (FOV_Y * 0.5).tan() / SIZE as f32;
+    let mut aabb = red_box().aabb;
+    aabb.max.x = (40.25 - SIZE as f32 / 2.0) * mm_per_px;
+    let scene = Scene {
+        opaque: vec![BoxInstance { aabb, ..red_box() }],
+        ..Default::default()
+    };
+    let p = draw(&mut r, &scene);
+    let row: Vec<[u8; 4]> = (36..44).map(|x| pixel(&p, x, 32)).collect();
+    assert!(
+        row.iter().any(|[_, green, _, _]| (20..220).contains(green)),
+        "no partly covered pixel at the edge: {row:?}"
+    );
 }
 
 #[test]
