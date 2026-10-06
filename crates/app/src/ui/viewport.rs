@@ -228,13 +228,50 @@ pub fn ContextMenu(menu: Menu) -> impl IntoView {
     }
 }
 
+thread_local! {
+    /// The canvas's exact size in device pixels, when the browser reports it.
+    static DEVICE_PIXELS: std::cell::Cell<Option<(u32, u32)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether `ResizeObserver` reports sizes in device pixels (not in Safari).
+fn device_pixel_box_supported() -> bool {
+    let key = wasm_bindgen::JsValue::from_str("devicePixelContentBoxSize");
+    js_sys::Reflect::get(&js_sys::global(), &"ResizeObserverEntry".into())
+        .and_then(|class| js_sys::Reflect::get(&class, &"prototype".into()))
+        .and_then(|prototype| js_sys::Reflect::has(prototype.unchecked_ref(), &key))
+        .unwrap_or(false)
+}
+
 /// Keeps the canvas's pixel size, the renderer and the session viewport equal to its CSS size.
+/// Where the browser reports the canvas's size in device pixels, that size is used as is, so
+/// fractional display scaling (125 %, 150 %) maps canvas pixels one-to-one onto the screen.
 fn observe_size(canvas: &web_sys::HtmlCanvasElement) {
-    let callback = Closure::<dyn FnMut(js_sys::Array)>::new(move |_entries: js_sys::Array| {
+    let device_pixels = device_pixel_box_supported();
+    let callback = Closure::<dyn FnMut(js_sys::Array)>::new(move |entries: js_sys::Array| {
+        let entry = entries.iter().last();
+        if let Some(entry) = entry.filter(|_| device_pixels) {
+            let entry: web_sys::ResizeObserverEntry = entry.unchecked_into();
+            let size: web_sys::ResizeObserverSize = entry
+                .device_pixel_content_box_size()
+                .get(0)
+                .unchecked_into();
+            let size = (
+                size.inline_size().round() as u32,
+                size.block_size().round() as u32,
+            );
+            DEVICE_PIXELS.with(|cell| cell.set(Some(size)));
+        }
         resize_to_canvas();
     });
     if let Ok(observer) = web_sys::ResizeObserver::new(callback.as_ref().unchecked_ref()) {
-        observer.observe(canvas);
+        if device_pixels {
+            // Also fires when only the device pixel ratio changes (moving to another screen).
+            let options = web_sys::ResizeObserverOptions::new();
+            options.set_box(web_sys::ResizeObserverBoxOptions::DevicePixelContentBox);
+            observer.observe_with_options(canvas, &options);
+        } else {
+            observer.observe(canvas);
+        }
     }
     callback.forget();
 }
@@ -245,9 +282,13 @@ fn resize_to_canvas() {
         return;
     };
     let rect = canvas.get_bounding_client_rect();
-    let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio());
-    let width = (rect.width() * dpr).round() as u32;
-    let height = (rect.height() * dpr).round() as u32;
+    let (width, height) = DEVICE_PIXELS.with(|cell| cell.get()).unwrap_or_else(|| {
+        let dpr = web_sys::window().map_or(1.0, |w| w.device_pixel_ratio());
+        (
+            (rect.width() * dpr).round() as u32,
+            (rect.height() * dpr).round() as u32,
+        )
+    });
     if let Some(renderer) = core.renderer.borrow_mut().as_mut() {
         renderer.resize(width, height);
         let (w, h) = renderer.size();
