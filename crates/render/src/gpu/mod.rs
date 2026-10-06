@@ -14,6 +14,8 @@ use crate::text::{TextRasterizer, label_texture_size, mip_chain};
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+/// MSAA samples for the scene pass. WebGPU guarantees 4 for every renderable colour format.
+const SAMPLE_COUNT: u32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderError {
@@ -98,6 +100,9 @@ pub struct Renderer {
     target: Target,
     width: u32,
     height: u32,
+    format: wgpu::TextureFormat,
+    /// Multisampled colour target of the scene pass, resolved into the frame.
+    msaa: wgpu::TextureView,
     depth: wgpu::TextureView,
     mask: wgpu::TextureView,
     globals: wgpu::Buffer,
@@ -342,7 +347,8 @@ impl Renderer {
                         buffers: &[Option<wgpu::VertexBufferLayout>],
                         primitive: wgpu::PrimitiveState,
                         depth: Option<wgpu::DepthStencilState>,
-                        target: wgpu::ColorTargetState| {
+                        target: wgpu::ColorTargetState,
+                        samples: u32| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(layout),
@@ -354,7 +360,10 @@ impl Renderer {
                 },
                 primitive,
                 depth_stencil: depth,
-                multisample: wgpu::MultisampleState::default(),
+                multisample: wgpu::MultisampleState {
+                    count: samples,
+                    ..Default::default()
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some(fs),
@@ -380,6 +389,7 @@ impl Renderer {
             culled,
             Some(depth_state(true)),
             opaque_target,
+            SAMPLE_COUNT,
         );
         let ghost_pipeline = pipeline(
             "ghost",
@@ -390,6 +400,7 @@ impl Renderer {
             culled,
             Some(depth_state(false)),
             blended_target.clone(),
+            SAMPLE_COUNT,
         );
         let mask_pipeline = pipeline(
             "mask",
@@ -400,6 +411,7 @@ impl Renderer {
             culled,
             None,
             wgpu::ColorTargetState::from(MASK_FORMAT),
+            1,
         );
         let strip = wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -414,6 +426,7 @@ impl Renderer {
             strip,
             Some(depth_state(false)),
             blended_target.clone(),
+            SAMPLE_COUNT,
         );
         let outline_pipeline = pipeline(
             "outline",
@@ -424,6 +437,7 @@ impl Renderer {
             wgpu::PrimitiveState::default(),
             None,
             blended_target,
+            1,
         );
 
         let cube_vertices = unit_cube();
@@ -435,7 +449,7 @@ impl Renderer {
         });
         queue.write_buffer(&cube, 0, bytemuck::cast_slice(&cube_vertices));
 
-        let (depth, mask) = create_size_dependent(&device, width, height);
+        let (msaa, depth, mask) = create_size_dependent(&device, format, width, height);
         let outline_bind = create_outline_bind(&device, &outline_layout, &mask);
         Renderer {
             device,
@@ -443,6 +457,8 @@ impl Renderer {
             target,
             width,
             height,
+            format,
+            msaa,
             depth,
             mask,
             globals,
@@ -496,7 +512,8 @@ impl Renderer {
                 *texture = create_offscreen_texture(&self.device, width, height);
             }
         }
-        let (depth, mask) = create_size_dependent(&self.device, width, height);
+        let (msaa, depth, mask) = create_size_dependent(&self.device, self.format, width, height);
+        self.msaa = msaa;
         self.depth = depth;
         self.mask = mask;
         self.outline_bind = create_outline_bind(&self.device, &self.outline_layout, &self.mask);
@@ -567,9 +584,9 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: &self.msaa,
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: Some(&view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: bg.r as f64 / 255.0,
@@ -577,14 +594,15 @@ impl Renderer {
                             b: bg.b as f64 / 255.0,
                             a: 1.0,
                         }),
-                        store: wgpu::StoreOp::Store,
+                        // Only the resolved frame is used afterwards.
+                        store: wgpu::StoreOp::Discard,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
+                        store: wgpu::StoreOp::Discard,
                     }),
                     stencil_ops: None,
                 }),
@@ -844,38 +862,49 @@ fn create_offscreen_texture(device: &wgpu::Device, width: u32, height: u32) -> w
     })
 }
 
+/// The multisampled colour target, the multisampled depth buffer and the selection mask.
 fn create_size_dependent(
     device: &wgpu::Device,
+    format: wgpu::TextureFormat,
     width: u32,
     height: u32,
-) -> (wgpu::TextureView, wgpu::TextureView) {
-    let make = |label: &str, format: wgpu::TextureFormat, usage: wgpu::TextureUsages| {
-        device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage,
-                view_formats: &[],
-            })
-            .create_view(&wgpu::TextureViewDescriptor::default())
-    };
+) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
+    let make =
+        |label: &str, format: wgpu::TextureFormat, samples: u32, usage: wgpu::TextureUsages| {
+            device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: samples,
+                    dimension: wgpu::TextureDimension::D2,
+                    format,
+                    usage,
+                    view_formats: &[],
+                })
+                .create_view(&wgpu::TextureViewDescriptor::default())
+        };
     (
+        make(
+            "scene msaa",
+            format,
+            SAMPLE_COUNT,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        ),
         make(
             "depth",
             DEPTH_FORMAT,
+            SAMPLE_COUNT,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
         ),
         make(
             "selection mask",
             MASK_FORMAT,
+            1,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         ),
     )
