@@ -134,6 +134,33 @@ fn selection_draws_a_glow_just_outside_the_box() {
 }
 
 #[test]
+fn selection_glow_follows_sub_pixel_edges() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let mm_per_px = 2.0 * camera().distance * (FOV_Y * 0.5).tan() / SIZE as f32;
+    // Both right edges stop short of pixel column 40's centre, so an aliased mask can't
+    // tell them apart.
+    let mut glow_for = |edge_px: f32| {
+        let mut aabb = red_box().aabb;
+        aabb.max.x = (edge_px - SIZE as f32 / 2.0) * mm_per_px;
+        let selected = BoxInstance { aabb, ..red_box() };
+        let scene = Scene {
+            opaque: vec![selected],
+            selected: vec![selected],
+            ..Default::default()
+        };
+        let p = draw(&mut r, &scene);
+        (40..44).map(|x| pixel(&p, x, 32)).collect::<Vec<_>>()
+    };
+    let near = glow_for(40.1);
+    let far = glow_for(40.45);
+    assert_ne!(
+        near, far,
+        "the glow ignores where the edge lies within a pixel"
+    );
+}
+
+#[test]
 fn labels_show_their_texture() {
     let _gpu = gpu_lock();
     let Some(mut r) = renderer() else { return };

@@ -84,26 +84,32 @@ fn vs_fullscreen(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f
 
 const GLOW_RADIUS: i32 = 3;
 
-// Glow on pixels just outside the selection mask, fading with distance.
+// Glow just outside the selection mask, fading with distance. The mask holds each pixel's
+// coverage (resolved MSAA), so a neighbour with coverage c puts the shape's edge roughly
+// `d - c` pixels away; that keeps the glow smooth along slanted edges.
 @fragment
 fn fs_outline(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     let centre = vec2<i32>(position.xy);
     let last = vec2<i32>(textureDimensions(selection_mask)) - vec2<i32>(1, 1);
-    if (textureLoad(selection_mask, centre, 0).r > 0.5) {
+    let inside = textureLoad(selection_mask, centre, 0).r;
+    if (inside >= 1.0) {
         discard;
     }
     var strength = 0.0;
     for (var dy = -GLOW_RADIUS; dy <= GLOW_RADIUS; dy++) {
         for (var dx = -GLOW_RADIUS; dx <= GLOW_RADIUS; dx++) {
             let q = clamp(centre + vec2<i32>(dx, dy), vec2<i32>(0, 0), last);
-            if (textureLoad(selection_mask, q, 0).r > 0.5) {
+            let coverage = textureLoad(selection_mask, q, 0).r;
+            if (coverage > 0.0) {
                 let d = length(vec2<f32>(f32(dx), f32(dy)));
-                strength = max(strength, 1.0 - (d - 1.0) / f32(GLOW_RADIUS));
+                strength = max(strength, 1.0 - (d - coverage) / f32(GLOW_RADIUS));
             }
         }
     }
-    if (strength <= 0.0) {
+    // Only the uncovered part of a pixel on the edge glows.
+    let alpha = clamp(strength, 0.0, 1.0) * (1.0 - inside);
+    if (alpha <= 0.0) {
         discard;
     }
-    return vec4<f32>(1.0, 0.65, 0.0, clamp(strength, 0.0, 1.0));
+    return vec4<f32>(1.0, 0.65, 0.0, alpha);
 }

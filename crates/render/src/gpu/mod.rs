@@ -101,10 +101,7 @@ pub struct Renderer {
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
-    /// Multisampled colour target of the scene pass, resolved into the frame.
-    msaa: wgpu::TextureView,
-    depth: wgpu::TextureView,
-    mask: wgpu::TextureView,
+    targets: SizeDependent,
     globals: wgpu::Buffer,
     globals_bind: wgpu::BindGroup,
     cube: wgpu::Buffer,
@@ -411,7 +408,7 @@ impl Renderer {
             culled,
             None,
             wgpu::ColorTargetState::from(MASK_FORMAT),
-            1,
+            SAMPLE_COUNT,
         );
         let strip = wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -449,8 +446,8 @@ impl Renderer {
         });
         queue.write_buffer(&cube, 0, bytemuck::cast_slice(&cube_vertices));
 
-        let (msaa, depth, mask) = create_size_dependent(&device, format, width, height);
-        let outline_bind = create_outline_bind(&device, &outline_layout, &mask);
+        let targets = SizeDependent::new(&device, format, width, height);
+        let outline_bind = create_outline_bind(&device, &outline_layout, &targets.mask);
         Renderer {
             device,
             queue,
@@ -458,9 +455,7 @@ impl Renderer {
             width,
             height,
             format,
-            msaa,
-            depth,
-            mask,
+            targets,
             globals,
             globals_bind,
             cube,
@@ -512,11 +507,9 @@ impl Renderer {
                 *texture = create_offscreen_texture(&self.device, width, height);
             }
         }
-        let (msaa, depth, mask) = create_size_dependent(&self.device, self.format, width, height);
-        self.msaa = msaa;
-        self.depth = depth;
-        self.mask = mask;
-        self.outline_bind = create_outline_bind(&self.device, &self.outline_layout, &self.mask);
+        self.targets = SizeDependent::new(&self.device, self.format, width, height);
+        self.outline_bind =
+            create_outline_bind(&self.device, &self.outline_layout, &self.targets.mask);
     }
 
     /// Draws one frame, or reports `Skipped` when the surface is temporarily unavailable.
@@ -584,7 +577,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.msaa,
+                    view: &self.targets.msaa,
                     depth_slice: None,
                     resolve_target: Some(&view),
                     ops: wgpu::Operations {
@@ -599,7 +592,7 @@ impl Renderer {
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth,
+                    view: &self.targets.depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Discard,
@@ -637,12 +630,12 @@ impl Renderer {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("selection mask"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &self.mask,
+                        view: &self.targets.mask_msaa,
                         depth_slice: None,
-                        resolve_target: None,
+                        resolve_target: Some(&self.targets.mask),
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                            store: wgpu::StoreOp::Store,
+                            store: wgpu::StoreOp::Discard,
                         },
                     })],
                     depth_stencil_attachment: None,
@@ -862,52 +855,55 @@ fn create_offscreen_texture(device: &wgpu::Device, width: u32, height: u32) -> w
     })
 }
 
-/// The multisampled colour target, the multisampled depth buffer and the selection mask.
-fn create_size_dependent(
-    device: &wgpu::Device,
-    format: wgpu::TextureFormat,
-    width: u32,
-    height: u32,
-) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
-    let make =
-        |label: &str, format: wgpu::TextureFormat, samples: u32, usage: wgpu::TextureUsages| {
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some(label),
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: samples,
-                    dimension: wgpu::TextureDimension::D2,
-                    format,
-                    usage,
-                    view_formats: &[],
-                })
-                .create_view(&wgpu::TextureViewDescriptor::default())
-        };
-    (
-        make(
-            "scene msaa",
-            format,
-            SAMPLE_COUNT,
-            wgpu::TextureUsages::RENDER_ATTACHMENT,
-        ),
-        make(
-            "depth",
-            DEPTH_FORMAT,
-            SAMPLE_COUNT,
-            wgpu::TextureUsages::RENDER_ATTACHMENT,
-        ),
-        make(
-            "selection mask",
-            MASK_FORMAT,
-            1,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        ),
-    )
+/// Render targets that match the drawing surface's size.
+struct SizeDependent {
+    /// Multisampled colour target of the scene pass, resolved into the frame.
+    msaa: wgpu::TextureView,
+    depth: wgpu::TextureView,
+    /// Multisampled selection mask, resolved into `mask` so edge pixels hold partial coverage.
+    mask_msaa: wgpu::TextureView,
+    mask: wgpu::TextureView,
+}
+
+impl SizeDependent {
+    fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> SizeDependent {
+        let make =
+            |label: &str, format: wgpu::TextureFormat, samples: u32, usage: wgpu::TextureUsages| {
+                device
+                    .create_texture(&wgpu::TextureDescriptor {
+                        label: Some(label),
+                        size: wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: samples,
+                        dimension: wgpu::TextureDimension::D2,
+                        format,
+                        usage,
+                        view_formats: &[],
+                    })
+                    .create_view(&wgpu::TextureViewDescriptor::default())
+            };
+        let attachment = wgpu::TextureUsages::RENDER_ATTACHMENT;
+        SizeDependent {
+            msaa: make("scene msaa", format, SAMPLE_COUNT, attachment),
+            depth: make("depth", DEPTH_FORMAT, SAMPLE_COUNT, attachment),
+            mask_msaa: make("selection mask msaa", MASK_FORMAT, SAMPLE_COUNT, attachment),
+            mask: make(
+                "selection mask",
+                MASK_FORMAT,
+                1,
+                attachment | wgpu::TextureUsages::TEXTURE_BINDING,
+            ),
+        }
+    }
 }
 
 fn create_outline_bind(
