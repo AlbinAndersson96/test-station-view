@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use glam::{Vec2, Vec3};
 use tsv_core::edit::ObjectId;
-use tsv_core::ids::PortId;
+use tsv_core::ids::{CableId, PortId};
 use tsv_core::limits::Limits;
 use tsv_core::model::{Document, Rgb};
 use tsv_core::port_grid::Cell;
@@ -75,6 +75,8 @@ pub struct Ghost {
 pub struct CablePreview {
     pub from: Vec3,
     pub to: Vec3,
+    /// The colour while `valid`: the default for a new cable, a re-plugged cable's own colour.
+    pub color: Rgb,
     /// `false` draws it red: releasing here would be rejected.
     pub valid: bool,
 }
@@ -88,6 +90,8 @@ pub struct SceneInput<'a> {
     pub hovered_port: Option<PortId>,
     pub ghost: Option<Ghost>,
     pub cable_preview: Option<CablePreview>,
+    /// A cable that is not drawn (its end is being re-plugged; the preview stands in for it).
+    pub hidden_cable: Option<CableId>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -291,7 +295,11 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
             }
         }
     }
-    for cable in &doc.cables {
+    for cable in doc
+        .cables
+        .iter()
+        .filter(|c| Some(c.id) != input.hidden_cable)
+    {
         let (Some(&a), Some(&b)) = (anchors.get(&cable.a), anchors.get(&cable.b)) else {
             continue;
         };
@@ -304,7 +312,7 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
     }
     if let Some(preview) = input.cable_preview {
         let color = if preview.valid {
-            Rgb::CABLE_BLUE
+            preview.color
         } else {
             GHOST_INVALID
         };

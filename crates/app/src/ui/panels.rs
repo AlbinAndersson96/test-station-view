@@ -137,33 +137,35 @@ pub fn Properties() -> impl IntoView {
                     Selected::Port { id, name, cable } => view! {
                         <Field label="Name" value=name check=check_name focus_for=ObjectId::Port(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Port(id), &v)) />
-                        {match cable {
-                            Some((cable, cable_name)) => view! {
-                                <div class="field">
-                                    <span>"Cable"</span>
-                                    <button
-                                        class="link"
-                                        on:click=move |_| update(|s| s.select(Some(ObjectId::Cable(cable))))
-                                    >
-                                        {cable_name}
-                                    </button>
-                                </div>
-                            }
-                                .into_any(),
-                            None => view! {
+                        {
+                            let (source, hint) = match &cable {
+                                Some((cable, _)) => (DragSource::CableEnd { cable: *cable, end: id }, "⠿ Drag to re-plug"),
+                                None => (DragSource::Cable { from: id }, "⠿ Drag to a port to connect"),
+                            };
+                            view! {
+                                {cable.map(|(cable, cable_name)| view! {
+                                    <div class="field">
+                                        <span>"Cable"</span>
+                                        <button
+                                            class="link"
+                                            on:click=move |_| update(|s| s.select(Some(ObjectId::Cable(cable))))
+                                        >
+                                            {cable_name}
+                                        </button>
+                                    </div>
+                                })}
                                 <div
                                     class="handle"
-                                    on:pointerdown=move |ev| handle_down(&ev, Some(DragSource::Cable { from: id }))
+                                    on:pointerdown=move |ev| handle_down(&ev, Some(source.clone()))
                                     on:pointermove=move |ev| forward_move(&ev)
                                     on:pointerup=move |ev| forward_up(&ev)
                                     on:pointercancel=move |_| forward_cancel()
                                     on:lostpointercapture=move |_| forward_cancel()
                                 >
-                                    "⠿ Drag to a port to connect"
+                                    {hint}
                                 </div>
                             }
-                                .into_any(),
-                        }}
+                        }
                     }
                         .into_any(),
                     Selected::Cable { id, name, color, a, b } => view! {

@@ -48,6 +48,7 @@ pub struct Session {
     pub(crate) preview: Option<Plan>,
     pub(crate) ghost: Option<Ghost>,
     pub(crate) cable_preview: Option<CablePreview>,
+    pub(crate) hidden_cable: Option<CableId>,
     last_frame_s: Option<f64>,
     revision: u64,
     ui_revision: u64,
@@ -73,6 +74,7 @@ impl Session {
             preview: None,
             ghost: None,
             cable_preview: None,
+            hidden_cable: None,
             last_frame_s: None,
             revision: 0,
             ui_revision: 0,
@@ -390,6 +392,7 @@ impl Session {
             hovered_port: self.hovered_port,
             ghost: self.ghost,
             cable_preview: self.cable_preview,
+            hidden_cable: self.hidden_cable,
         };
         build_scene(&input, &self.view.motion)
     }

@@ -197,7 +197,7 @@ pub fn ControlsHelp() -> impl IntoView {
         ("Middle-drag", "pan"),
         ("Wheel", "zoom"),
         ("Left-drag a device/port", "move it"),
-        ("Shift-drag a port", "connect a cable"),
+        ("Shift-drag a port", "connect or re-plug a cable"),
         ("Double-click", "focus"),
         ("Right-click", "rename/delete"),
     ];

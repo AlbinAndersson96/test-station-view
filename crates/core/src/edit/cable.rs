@@ -40,6 +40,43 @@ pub fn plan_connect(
     Ok(Plan { document, subject })
 }
 
+/// Moves the end of `cable_id` that is plugged into `end` over to port `to`. The cable keeps its
+/// identity, name and colour. Moving an end onto the port it is already on changes nothing.
+pub fn plan_replug(
+    doc: &Document,
+    cable_id: CableId,
+    end: PortId,
+    to: PortId,
+) -> Result<Plan, Rejection> {
+    let index = cable_index(doc, cable_id)?;
+    let cable = &doc.cables[index];
+    if !cable.touches(end) {
+        return Err(Rejection::NotFound);
+    }
+    let (_, _, target) = doc.port(to).ok_or(Rejection::NotFound)?;
+    let subject = Some(ObjectId::Cable(cable_id));
+    if to == end {
+        return Ok(Plan {
+            document: doc.clone(),
+            subject,
+        });
+    }
+    if cable.touches(to) {
+        return Err(Rejection::SamePort);
+    }
+    if doc.cable_at_port(to).is_some() {
+        return Err(Rejection::PortInUse(target.name.to_string()));
+    }
+    let mut document = doc.clone();
+    let cable = &mut document.cables[index];
+    if cable.a == end {
+        cable.a = to;
+    } else {
+        cable.b = to;
+    }
+    Ok(Plan { document, subject })
+}
+
 pub fn plan_remove_cable(doc: &Document, cable_id: CableId) -> Result<Plan, Rejection> {
     let index = cable_index(doc, cable_id)?;
     let mut document = doc.clone();
