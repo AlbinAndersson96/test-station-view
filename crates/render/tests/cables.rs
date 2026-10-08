@@ -1,6 +1,6 @@
 mod common;
 
-use tsv_core::model::PortKind;
+use tsv_core::model::{Gender, PortKind};
 
 use common::*;
 use glam::Vec3;
@@ -49,7 +49,14 @@ fn a_port_anchor_is_the_front_centre_of_its_marker() {
     let (d, hi, _, _) = station();
     let l = limits();
     let dmm = &d.racks[0].devices[0];
-    let marker = port_marker_box(0, dmm, Cell { row: 0, col: 0 }, PortKind::Unspecified, &l);
+    let marker = port_marker_box(
+        0,
+        dmm,
+        Cell { row: 0, col: 0 },
+        PortKind::Unspecified,
+        Gender::Unspecified,
+        &l,
+    );
     let anchor = port_anchor(&d, &l, hi).unwrap();
     assert_close(anchor.x, marker.center().x);
     assert_close(anchor.y, marker.center().y);

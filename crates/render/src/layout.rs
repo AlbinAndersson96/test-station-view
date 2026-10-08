@@ -7,7 +7,7 @@ use glam::{Vec2, Vec3};
 use tsv_core::edit::ObjectId;
 use tsv_core::ids::PortId;
 use tsv_core::limits::Limits;
-use tsv_core::model::{Cable, Device, Document, PortKind, Rack};
+use tsv_core::model::{Cable, Device, Document, Gender, PortKind, Rack};
 use tsv_core::port_grid::Cell;
 
 pub const U_MM: f32 = 44.45;
@@ -245,13 +245,25 @@ pub fn marker_shape(kind: PortKind) -> MarkerShape {
     }
 }
 
-/// The marker drawn for a port of `kind`, centred in the upper part of its cell. Its size
-/// follows `marker_shape`; a round marker's box is the cylinder's bounds.
+/// How far a marker sticks out, in units of `PORT_PROTRUSION_MM`: male connectors stand out
+/// like pins, female ones sit nearly flush like sockets.
+pub fn marker_depth(gender: Gender) -> f32 {
+    match gender {
+        Gender::Unspecified | Gender::Other => 1.0,
+        Gender::Male => 1.6,
+        Gender::Female => 0.5,
+    }
+}
+
+/// The marker drawn for a port of `kind` and `gender`, centred in the upper part of its cell.
+/// Its outline follows `marker_shape` and its depth `marker_depth`; a round marker's box is the
+/// cylinder's bounds.
 pub fn port_marker_box(
     rack_index: usize,
     device: &Device,
     cell: Cell,
     kind: PortKind,
+    gender: Gender,
     limits: &Limits,
 ) -> Aabb {
     let r = port_cell_rect(rack_index, device, cell, limits);
@@ -267,7 +279,11 @@ pub fn port_marker_box(
     let cy = r.min.y + size.y * 0.62;
     Aabb::new(
         Vec3::new(cx - half.x, cy - half.y, 0.0),
-        Vec3::new(cx + half.x, cy + half.y, PORT_PROTRUSION_MM),
+        Vec3::new(
+            cx + half.x,
+            cy + half.y,
+            PORT_PROTRUSION_MM * marker_depth(gender),
+        ),
     )
 }
 
@@ -371,6 +387,7 @@ pub fn object_bounds(doc: &Document, limits: &Limits, id: ObjectId) -> Option<Aa
                             col: p.col,
                         },
                         p.kind,
+                        p.gender,
                         limits,
                     )
                 })

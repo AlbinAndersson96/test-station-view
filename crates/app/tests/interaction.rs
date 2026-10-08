@@ -1,6 +1,6 @@
 mod common;
 
-use tsv_core::model::PortKind;
+use tsv_core::model::{Gender, PortKind};
 
 use common::*;
 use glam::{Vec2, Vec3};
@@ -204,6 +204,7 @@ fn port_drags_zoom_to_the_face_and_back() {
             device: did,
             name: name("B"),
             kind: PortKind::Unspecified,
+            gender: Gender::Unspecified,
         },
         now,
     );
@@ -236,6 +237,7 @@ fn hovering_a_port_marks_it() {
         &dev,
         Cell { row: 0, col: 2 },
         PortKind::Unspecified,
+        Gender::Unspecified,
         &limits(),
     );
     let at = px(
@@ -327,6 +329,7 @@ fn undoing_away_a_hovered_port_clears_the_hover() {
             device: did,
             name: name("P"),
             kind: PortKind::Unspecified,
+            gender: Gender::Unspecified,
         },
         now,
     );
@@ -345,6 +348,7 @@ fn undoing_away_a_hovered_port_clears_the_hover() {
         &dev,
         Cell { row: 0, col: 1 },
         PortKind::Unspecified,
+        Gender::Unspecified,
         &limits(),
     );
     let at = px(

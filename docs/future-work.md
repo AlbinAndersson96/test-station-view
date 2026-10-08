@@ -38,8 +38,10 @@ marker shape and colour. A cable between two different specific types is allowed
   - `layout::marker_shape` and `scene::port_color`.
 - **Still open:**
   - user-defined types;
-  - gender (male/female);
   - an explicit adapter object instead of the mismatch warning.
+- **Gender:** done (male, female or other/genderless; see
+  `docs/superpowers/specs/2026-10-08-connector-gender-design.md`). It is shown by the marker's
+  depth and never restricts cables.
 
 ### Cables between ports
 

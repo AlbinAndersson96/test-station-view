@@ -8,12 +8,12 @@ use uuid::Uuid;
 use crate::ids::{CableId, DeviceId, ModelId, PortId, RackId};
 use crate::limits::Limits;
 use crate::model::{
-    Cable, CatalogEntry, Device, DeviceKind, Document, ModelPort, Port, PortKind, Rack, Rgb,
+    Cable, CatalogEntry, Device, DeviceKind, Document, Gender, ModelPort, Port, PortKind, Rack, Rgb,
 };
 use crate::name::{DocumentName, ModelText, Name};
 use crate::validate::{ValidationError, validate};
 
-pub const FORMAT_VERSION: u64 = 4;
+pub const FORMAT_VERSION: u64 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LoadError {
@@ -61,6 +61,8 @@ struct FileModelPort {
     col: u32,
     #[serde(default)]
     kind: FilePortKind,
+    #[serde(default)]
+    gender: FileGender,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -91,6 +93,8 @@ struct FilePort {
     col: u32,
     #[serde(default)]
     kind: FilePortKind,
+    #[serde(default)]
+    gender: FileGender,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -109,6 +113,16 @@ enum FileDeviceKind {
     AdHoc,
     /// Written as `{ "model": "<uuid>" }`.
     Model(Uuid),
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum FileGender {
+    #[default]
+    Unspecified,
+    Male,
+    Female,
+    Other,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -175,7 +189,9 @@ fn migrate(mut value: Value, version: u64) -> Result<Value, LoadError> {
             }
             migrate(value, 4)
         }
-        4 => Ok(value),
+        // Version 5 added port genders; a missing gender reads as unspecified.
+        4 => migrate(value, 5),
+        5 => Ok(value),
         other => Err(LoadError::Malformed(format!(
             "unsupported format version {other}"
         ))),
@@ -213,6 +229,7 @@ fn port_to_file(port: &Port) -> FilePort {
         row: port.row,
         col: port.col,
         kind: kind_to_file(port.kind),
+        gender: gender_to_file(port.gender),
     }
 }
 
@@ -275,6 +292,7 @@ fn entry_to_file(entry: &CatalogEntry) -> FileCatalogEntry {
                 row: p.row,
                 col: p.col,
                 kind: kind_to_file(p.kind),
+                gender: gender_to_file(p.gender),
             })
             .collect(),
     }
@@ -303,6 +321,7 @@ fn entry_from_file(entry: FileCatalogEntry, limits: &Limits) -> Result<CatalogEn
                     row: p.row,
                     col: p.col,
                     kind: kind_from_file(p.kind),
+                    gender: gender_from_file(p.gender),
                 })
             })
             .collect::<Result<Vec<_>, LoadError>>()?,
@@ -320,6 +339,24 @@ fn strict_model_text(raw: &str) -> Result<ModelText, LoadError> {
         return Err(invalid("has leading or trailing whitespace".into()));
     }
     Ok(text)
+}
+
+fn gender_to_file(gender: Gender) -> FileGender {
+    match gender {
+        Gender::Unspecified => FileGender::Unspecified,
+        Gender::Male => FileGender::Male,
+        Gender::Female => FileGender::Female,
+        Gender::Other => FileGender::Other,
+    }
+}
+
+fn gender_from_file(gender: FileGender) -> Gender {
+    match gender {
+        FileGender::Unspecified => Gender::Unspecified,
+        FileGender::Male => Gender::Male,
+        FileGender::Female => Gender::Female,
+        FileGender::Other => Gender::Other,
+    }
 }
 
 fn kind_to_file(kind: PortKind) -> FilePortKind {
@@ -403,6 +440,7 @@ fn port_from_file(port: FilePort, limits: &Limits) -> Result<Port, LoadError> {
         row: port.row,
         col: port.col,
         kind: kind_from_file(port.kind),
+        gender: gender_from_file(port.gender),
     })
 }
 

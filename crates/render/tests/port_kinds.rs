@@ -3,7 +3,7 @@ mod common;
 use common::*;
 use glam::Vec3;
 use tsv_core::edit::ObjectId;
-use tsv_core::model::{Document, PortKind};
+use tsv_core::model::{Document, Gender, PortKind};
 use tsv_core::port_grid::Cell;
 use tsv_render::layout::*;
 use tsv_render::pick::*;
@@ -38,11 +38,11 @@ fn markers_take_their_type_shape_around_the_same_centre() {
     let dev = &d.racks[0].devices[0];
     let l = limits();
     let cell = Cell { row: 0, col: 2 };
-    let square = port_marker_box(0, dev, cell, PortKind::Unspecified, &l);
+    let square = port_marker_box(0, dev, cell, PortKind::Unspecified, Gender::Unspecified, &l);
     let side = square.size().x;
     assert_close(square.size().y, side);
     for kind in PortKind::ALL {
-        let b = port_marker_box(0, dev, cell, kind, &l);
+        let b = port_marker_box(0, dev, cell, kind, Gender::Unspecified, &l);
         assert_close(b.center().x, square.center().x);
         assert_close(b.center().y, square.center().y);
         assert_close(b.size().z, PORT_PROTRUSION_MM);
@@ -128,4 +128,33 @@ fn shaped_markers_are_picked_by_their_shape() {
         dir: Vec3::NEG_Z,
     };
     assert_eq!(pick(&d, &l, &ray), Some(ObjectId::Port(pid)));
+}
+
+#[test]
+fn gender_sets_how_far_a_marker_sticks_out() {
+    let d = one_port(PortKind::Bnc);
+    let dev = &d.racks[0].devices[0];
+    let l = limits();
+    let cell = Cell { row: 0, col: 2 };
+    let depth = |g| port_marker_box(0, dev, cell, PortKind::Bnc, g, &l).size().z;
+    assert_close(depth(Gender::Unspecified), PORT_PROTRUSION_MM);
+    assert_close(depth(Gender::Other), PORT_PROTRUSION_MM);
+    assert_close(depth(Gender::Male), PORT_PROTRUSION_MM * 1.6);
+    assert_close(depth(Gender::Female), PORT_PROTRUSION_MM * 0.5);
+    let flat = port_marker_box(0, dev, cell, PortKind::Bnc, Gender::Female, &l);
+    let square = port_marker_box(0, dev, cell, PortKind::Bnc, Gender::Unspecified, &l);
+    assert_eq!(
+        (flat.min.x, flat.max.x),
+        (square.min.x, square.max.x),
+        "same outline"
+    );
+
+    // The scene and the cable anchor follow the port's gender.
+    let mut male = d.clone();
+    male.racks[0].devices[0].ports[0].gender = Gender::Male;
+    let pid = male.racks[0].devices[0].ports[0].id;
+    let anchor = port_anchor(&male, &l, pid).unwrap();
+    assert_close(anchor.z, PORT_PROTRUSION_MM * 1.6);
+    let scene = build_scene(&input(&male, &l), &Motion::default());
+    assert_close(scene.tubes[0].b.z, PORT_PROTRUSION_MM * 1.6);
 }

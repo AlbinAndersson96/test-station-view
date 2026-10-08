@@ -55,6 +55,49 @@ pub enum DeviceKind {
     Model(ModelId),
 }
 
+/// A connector's gender (independent of its type).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Gender {
+    #[default]
+    Unspecified,
+    Male,
+    Female,
+    /// Genderless or hermaphroditic connectors.
+    Other,
+}
+
+impl Gender {
+    pub const ALL: [Gender; 4] = [
+        Gender::Unspecified,
+        Gender::Male,
+        Gender::Female,
+        Gender::Other,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Gender::Unspecified => "Unspecified",
+            Gender::Male => "Male",
+            Gender::Female => "Female",
+            Gender::Other => "Other (genderless)",
+        }
+    }
+
+    /// A stable identifier (the file format's spelling, also used for UI option values).
+    pub fn key(self) -> &'static str {
+        match self {
+            Gender::Unspecified => "unspecified",
+            Gender::Male => "male",
+            Gender::Female => "female",
+            Gender::Other => "other",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Gender> {
+        Gender::ALL.into_iter().find(|g| g.key() == key)
+    }
+}
+
 /// A port of a catalogue entry: copied, with a new ID, into each placed device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelPort {
@@ -62,6 +105,7 @@ pub struct ModelPort {
     pub row: u32,
     pub col: u32,
     pub kind: PortKind,
+    pub gender: Gender,
 }
 
 /// A model in the document's equipment catalogue.
@@ -182,6 +226,7 @@ pub struct Port {
     pub row: u32,
     pub col: u32,
     pub kind: PortKind,
+    pub gender: Gender,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

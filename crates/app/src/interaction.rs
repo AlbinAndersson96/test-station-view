@@ -9,7 +9,7 @@ use tsv_core::edit::{
     plan_remove_cable, plan_remove_device, plan_remove_port, plan_replug,
 };
 use tsv_core::ids::{CableId, DeviceId, ModelId, PortId};
-use tsv_core::model::{PortKind, Rgb};
+use tsv_core::model::{Gender, PortKind, Rgb};
 use tsv_core::name::Name;
 use tsv_core::port_grid::Cell;
 use tsv_render::layout::{device_face, object_bounds, port_anchor, port_marker_box, units_box};
@@ -42,6 +42,7 @@ pub enum DragSource {
         device: DeviceId,
         name: Name,
         kind: PortKind,
+        gender: Gender,
     },
     Port {
         device: DeviceId,
@@ -421,19 +422,23 @@ impl Session {
                 unreachable!("handled above")
             }
             DragSource::NewPort { device, .. } | DragSource::Port { device, .. } => {
-                let (core_source, kind) = match source {
-                    DragSource::NewPort { name, kind, .. } => (
+                let (core_source, kind, gender) = match source {
+                    DragSource::NewPort {
+                        name, kind, gender, ..
+                    } => (
                         PortSource::New {
                             name: name.clone(),
                             kind: *kind,
+                            gender: *gender,
                         },
                         *kind,
+                        *gender,
                     ),
                     DragSource::Port { port, .. } => {
                         let Some((_, _, p)) = doc.port(*port) else {
                             return;
                         };
-                        (PortSource::Existing(*port), p.kind)
+                        (PortSource::Existing(*port), p.kind, p.gender)
                     }
                     _ => unreachable!(),
                 };
@@ -468,7 +473,7 @@ impl Session {
                             row: target.cell.row,
                             col: target.cell.col,
                         };
-                        let aabb = port_marker_box(ri, d, cell, kind, limits);
+                        let aabb = port_marker_box(ri, d, cell, kind, gender, limits);
                         self.ghost = Some(Ghost {
                             aabb,
                             color,

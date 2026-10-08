@@ -114,6 +114,7 @@ pub(crate) fn device_from_model(entry: &CatalogEntry, limits: &Limits) -> Device
                 row: p.row,
                 col: p.col,
                 kind: p.kind,
+                gender: p.gender,
             })
             .collect(),
     }
@@ -128,6 +129,7 @@ fn model_ports(device: &Device) -> Vec<ModelPort> {
             row: p.row,
             col: p.col,
             kind: p.kind,
+            gender: p.gender,
         })
         .collect()
 }

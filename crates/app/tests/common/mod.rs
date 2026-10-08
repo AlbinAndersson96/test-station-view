@@ -24,6 +24,7 @@ pub fn port(n: &str, row: u32, col: u32) -> Port {
         row,
         col,
         kind: PortKind::default(),
+        gender: Default::default(),
     }
 }
 

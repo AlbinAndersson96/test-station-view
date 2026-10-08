@@ -91,9 +91,7 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
                         target: RenameTarget::Object(ObjectId::Port(port.id)),
                         label: port.name.to_string(),
                         detail: [
-                            port.kind
-                                .is_specific()
-                                .then(|| port.kind.label().to_string()),
+                            port_description(port),
                             doc.cable_at_port(port.id).map(|c| c.name.to_string()),
                         ]
                         .into_iter()
@@ -109,6 +107,24 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
         }
         rows
     })
+}
+
+/// "BNC male", "BNC", "Female" or nothing: a port's type and gender, unspecified parts left out.
+fn port_description(port: &tsv_core::model::Port) -> Option<String> {
+    use tsv_core::model::{Gender, PortKind};
+    let kind = (port.kind != PortKind::Unspecified).then(|| port.kind.label().to_string());
+    let gender = match port.gender {
+        Gender::Unspecified => None,
+        Gender::Male => Some("male"),
+        Gender::Female => Some("female"),
+        Gender::Other => Some("genderless"),
+    };
+    match (kind, gender) {
+        (Some(k), Some(g)) => Some(format!("{k} {g}")),
+        (Some(k), None) => Some(k),
+        (None, Some(g)) => Some(crate::forms::capitalise(g)),
+        (None, None) => None,
+    }
 }
 
 /// One row per cable: its name, and its ends as `Device.Port – Device.Port`.

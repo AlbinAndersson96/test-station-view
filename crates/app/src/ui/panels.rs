@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 use tsv_core::edit::ObjectId;
 use tsv_core::ids::{CableId, DeviceId, ModelId, PortId, RackId};
-use tsv_core::model::{DeviceKind, Document, PortKind};
+use tsv_core::model::{DeviceKind, Document, Gender, PortKind};
 
 use crate::forms::{
     color_from_input, color_to_input, new_device_input, new_port_input, parse_document_name,
@@ -37,6 +37,7 @@ enum Selected {
         id: PortId,
         name: String,
         kind: PortKind,
+        gender: Gender,
         /// The cable plugged into the port: its ID and name.
         cable: Option<(CableId, String)>,
     },
@@ -92,6 +93,7 @@ fn selected() -> Selected {
                 id,
                 name: p.name.to_string(),
                 kind: p.kind,
+                gender: p.gender,
                 cable: doc.cable_at_port(id).map(|c| (c.id, c.name.to_string())),
             }),
             Some(ObjectId::Cable(id)) => doc.cable(id).map(|c| Selected::Cable {
@@ -154,10 +156,11 @@ pub fn Properties() -> impl IntoView {
                         <SaveAsModel device=id model=model />
                     }
                         .into_any(),
-                    Selected::Port { id, name, kind, cable } => view! {
+                    Selected::Port { id, name, kind, gender, cable } => view! {
                         <Field label="Name" value=name check=check_name focus_for=ObjectId::Port(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Port(id), &v)) />
                         <KindSelect value=kind on_change=move |k| update(|s| s.set_port_kind(id, k)) />
+                        <GenderSelect value=gender on_change=move |g| update(|s| s.set_port_gender(id, g)) />
                         {
                             let (source, hint) = match &cable {
                                 Some((cable, _)) => (DragSource::CableEnd { cable: *cable, end: id }, "⠿ Drag to re-plug"),
@@ -370,6 +373,29 @@ fn ModelEditor(id: ModelId, manufacturer: String, model: String) -> impl IntoVie
     }
 }
 
+/// A connector-gender dropdown.
+#[component]
+fn GenderSelect(value: Gender, on_change: impl Fn(Gender) + 'static) -> impl IntoView {
+    view! {
+        <label class="field">
+            <span>"Gender"</span>
+            <select
+                prop:value=value.key()
+                on:change=move |ev| {
+                    if let Some(g) = Gender::from_key(&event_target_value(&ev)) {
+                        on_change(g);
+                    }
+                }
+            >
+                {Gender::ALL
+                    .iter()
+                    .map(|g| view! { <option value=g.key() selected=*g == value>{g.label()}</option> })
+                    .collect_view()}
+            </select>
+        </label>
+    }
+}
+
 /// A connector-type dropdown.
 #[component]
 fn KindSelect(value: PortKind, on_change: impl Fn(PortKind) + 'static) -> impl IntoView {
@@ -527,6 +553,7 @@ pub fn NewPortForm() -> impl IntoView {
     let sig = signals();
     let name = RwSignal::new(String::new());
     let kind = RwSignal::new(PortKind::Unspecified);
+    let gender = RwSignal::new(Gender::Unspecified);
     let device = move || {
         sig.rev.track();
         read(|s| {
@@ -557,6 +584,7 @@ pub fn NewPortForm() -> impl IntoView {
                 />
             </label>
             <KindSelect value=PortKind::Unspecified on_change=move |k| kind.set(k) />
+            <GenderSelect value=Gender::Unspecified on_change=move |g| gender.set(g) />
             {move || (!name.get().is_empty()).then(|| checked().err()).flatten()
                 .map(|e| view! { <div class="field-error">{e}</div> })}
             <div
@@ -567,6 +595,7 @@ pub fn NewPortForm() -> impl IntoView {
                         device,
                         name,
                         kind: kind.get_untracked(),
+                        gender: gender.get_untracked(),
                     });
                     handle_down(&ev, source);
                 }

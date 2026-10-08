@@ -255,7 +255,7 @@ fn deleting_a_model_unlinks_its_devices() {
 fn the_catalogue_survives_a_file_round_trip() {
     let (d, _, _) = saved();
     let json = to_json(&d);
-    assert!(json.starts_with("{\n  \"format_version\": 4,"), "{json}");
+    assert!(json.starts_with("{\n  \"format_version\": 5,"), "{json}");
     assert!(json.contains("\"catalog\": ["), "{json}");
     assert!(json.contains("\"model\": \""), "{json}");
     assert_eq!(from_json(&json, &limits()), Ok(d));
