@@ -83,6 +83,10 @@ pub fn Toolbar() -> impl IntoView {
         <header class="toolbar">
             <span class="app-name">"TestStationView"</span>
             <button on:click=move |_| sig.dialog.set(Some(Dialog::ConfirmNew))>"New"</button>
+            <button
+                title="Open the example station that shows what the tool can do"
+                on:click=move |_| sig.dialog.set(Some(Dialog::ConfirmExample))
+            >"Example"</button>
             <button on:click=move |_| {
                 if let Some(input) = file_ref.get() {
                     input.click();
@@ -124,6 +128,18 @@ pub fn DialogHost() -> impl IntoView {
                         close();
                         update(|s| s.new_document(now_s()));
                     }>"Create new"</button>
+                }
+                    .into_any(),
+            ),
+            Dialog::ConfirmExample => (
+                "Example station",
+                "Replace the current document with the example station? You can undo this.".into(),
+                view! {
+                    <button on:click=move |_| close()>"Cancel"</button>
+                    <button class="primary" on:click=move |_| {
+                        close();
+                        update(|s| s.load_example(now_s()));
+                    }>"Open example"</button>
                 }
                     .into_any(),
             ),

@@ -9,12 +9,13 @@ use tsv_core::file_format::to_json;
 use tsv_core::model::Document;
 
 #[test]
-fn nothing_stored_starts_fresh() {
+fn nothing_stored_starts_with_the_example() {
     let s = interpret_stored(Ok(None), &limits());
     let Startup::Fresh(d) = s else {
         panic!("{s:?}")
     };
-    assert_eq!(d.name.as_str(), "Station1");
+    assert_eq!(d.name.as_str(), "Example Station");
+    assert!(!d.cables.is_empty() && !d.catalog.is_empty());
 }
 
 #[test]

@@ -3,6 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::future::Future;
 
+use tsv_core::example::example_document;
 use tsv_core::file_format::from_json;
 use tsv_core::limits::Limits;
 use tsv_core::model::Document;
@@ -26,7 +27,7 @@ pub trait DocumentStore {
 /// What to start with, given what the store returned.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Startup {
-    /// Nothing stored (or storage unavailable): the default document.
+    /// Nothing stored (or storage unavailable): a first visit, which opens the example station.
     Fresh(Document),
     Restored(Document),
     /// Stored data exists but cannot be loaded. Start from the default document, show the
@@ -49,7 +50,7 @@ pub fn interpret_stored(stored: Result<Option<String>, String>, limits: &Limits)
                 },
             },
         },
-        Ok(None) | Err(_) => Startup::Fresh(Document::new_default(limits)),
+        Ok(None) | Err(_) => Startup::Fresh(example_document(limits)),
     }
 }
 

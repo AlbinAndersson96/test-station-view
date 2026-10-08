@@ -1,5 +1,6 @@
 pub mod edit;
 pub mod editor;
+pub mod example;
 pub mod file_format;
 pub mod ids;
 pub mod limits;

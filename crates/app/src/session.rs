@@ -343,6 +343,20 @@ impl Session {
         self.reset_view(now_s);
     }
 
+    /// Replaces the document with the example station (undoable); called after confirmation.
+    pub fn load_example(&mut self, now_s: f64) {
+        let plan = Plan {
+            document: tsv_core::example::example_document(&self.limits),
+            subject: None,
+        };
+        self.selection = None;
+        self.commit(plan);
+        self.view
+            .motion
+            .snap(&animation_targets(self.editor.document(), &self.limits));
+        self.reset_view(now_s);
+    }
+
     /// Replaces the document with an imported file; clears history (spec §5 "Import").
     pub fn import(&mut self, text: &str, now_s: f64) -> Result<(), String> {
         let document = from_json(text, &self.limits).map_err(|e| e.to_string())?;
