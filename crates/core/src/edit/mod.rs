@@ -1,17 +1,19 @@
 //! Edit operations. Each `plan_*` function computes a complete candidate document
 //! without touching its input; a `Rejection` means nothing changes.
 
+mod cable;
 mod device;
 mod document;
 mod port;
 mod rack;
 
+pub use cable::*;
 pub use device::*;
 pub use document::*;
 pub use port::*;
 pub use rack::*;
 
-use crate::ids::{DeviceId, PortId, RackId};
+use crate::ids::{CableId, DeviceId, PortId, RackId};
 use crate::model::Document;
 use crate::placement::PlacementError;
 use crate::port_grid::PortPlacementError;
@@ -21,6 +23,7 @@ pub enum ObjectId {
     Rack(RackId),
     Device(DeviceId),
     Port(PortId),
+    Cable(CableId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +59,10 @@ pub enum Rejection {
     WrongDevice,
     #[error("the height must be at most {max}U")]
     HeightAboveLimit { max: u32 },
+    #[error("a cable needs two different ports")]
+    SamePort,
+    #[error("port '{0}' already has a cable")]
+    PortInUse(String),
 }
 
 impl From<PlacementError> for Rejection {

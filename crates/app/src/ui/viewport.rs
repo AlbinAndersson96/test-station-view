@@ -134,7 +134,7 @@ pub fn Viewport() -> impl IntoView {
             let _ = target.set_pointer_capture(ev.pointer_id());
         }
         let (pos, _) = pointer_info(ev.client_x(), ev.client_y());
-        update(|s| s.pointer_down(pos, b));
+        update(|s| s.pointer_down_with_shift(pos, b, ev.shift_key()));
     };
     let on_context = move |ev: leptos::ev::MouseEvent| {
         ev.prevent_default();
@@ -192,11 +192,12 @@ pub fn Viewport() -> impl IntoView {
 /// The mouse controls, shown while the pointer is over the "?" in the corner of the view.
 #[component]
 pub fn ControlsHelp() -> impl IntoView {
-    const LINES: [(&str, &str); 6] = [
+    const LINES: [(&str, &str); 7] = [
         ("Left-drag", "rotate"),
         ("Middle-drag", "pan"),
         ("Wheel", "zoom"),
         ("Left-drag a device/port", "move it"),
+        ("Shift-drag a port", "connect a cable"),
         ("Double-click", "focus"),
         ("Right-click", "rename/delete"),
     ];

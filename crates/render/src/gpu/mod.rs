@@ -1,4 +1,5 @@
-//! wgpu renderer (spec §4.2): instanced boxes, labels, translucent ghost, selection outline.
+//! wgpu renderer (spec §4.2): instanced boxes and cable tubes, labels, translucent ghost,
+//! selection outline.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
 use crate::camera::OrbitCamera;
-use crate::scene::{BACKGROUND, BoxInstance, Label, Scene};
+use crate::scene::{BACKGROUND, BoxInstance, Label, Scene, TubeInstance};
 use crate::text::{TextRasterizer, label_texture_size, mip_chain, premultiply};
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -70,6 +71,19 @@ struct BoxRaw {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+struct TubeRaw {
+    a: [f32; 3],
+    radius: f32,
+    b: [f32; 3],
+    _pad: f32,
+    color: [f32; 4],
+}
+
+/// Sides of the prism a cable tube is drawn as.
+const TUBE_SIDES: usize = 8;
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct LabelRaw {
     rect: [f32; 4],
     z: f32,
@@ -112,7 +126,11 @@ pub struct Renderer {
     globals: wgpu::Buffer,
     globals_bind: wgpu::BindGroup,
     cube: wgpu::Buffer,
+    tube_mesh: wgpu::Buffer,
+    tube_vertex_count: u32,
     box_pipeline: wgpu::RenderPipeline,
+    tube_pipeline: wgpu::RenderPipeline,
+    tube_mask_pipeline: wgpu::RenderPipeline,
     ghost_pipeline: wgpu::RenderPipeline,
     mask_pipeline: wgpu::RenderPipeline,
     label_pipeline: wgpu::RenderPipeline,
@@ -328,6 +346,18 @@ impl Renderer {
                 attributes: &wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32x3, 4 => Float32x4],
             }),
         ];
+        let tube_buffers = [
+            Some(wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<CubeVertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3],
+            }),
+            Some(wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<TubeRaw>() as u64,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &wgpu::vertex_attr_array![2 => Float32x4, 3 => Float32x4, 4 => Float32x4],
+            }),
+        ];
         let label_buffers = [Some(wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<LabelRaw>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -394,7 +424,7 @@ impl Renderer {
             &box_buffers,
             culled,
             Some(depth_state(true)),
-            opaque_target,
+            opaque_target.clone(),
             SAMPLE_COUNT,
         );
         let ghost_pipeline = pipeline(
@@ -414,6 +444,28 @@ impl Renderer {
             "vs_box",
             "fs_mask",
             &box_buffers,
+            culled,
+            None,
+            wgpu::ColorTargetState::from(MASK_FORMAT),
+            SAMPLE_COUNT,
+        );
+        let tube_pipeline = pipeline(
+            "tube",
+            &box_layout,
+            "vs_tube",
+            "fs_tube",
+            &tube_buffers,
+            culled,
+            Some(depth_state(true)),
+            opaque_target,
+            SAMPLE_COUNT,
+        );
+        let tube_mask_pipeline = pipeline(
+            "tube mask",
+            &box_layout,
+            "vs_tube",
+            "fs_mask",
+            &tube_buffers,
             culled,
             None,
             wgpu::ColorTargetState::from(MASK_FORMAT),
@@ -478,6 +530,14 @@ impl Renderer {
             mapped_at_creation: false,
         });
         queue.write_buffer(&cube, 0, bytemuck::cast_slice(&cube_vertices));
+        let tube_vertices = unit_tube();
+        let tube_mesh = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tube"),
+            size: std::mem::size_of_val(tube_vertices.as_slice()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&tube_mesh, 0, bytemuck::cast_slice(&tube_vertices));
 
         let targets = SizeDependent::new(&device, format, width, height);
         let outline_bind = create_outline_bind(&device, &outline_layout, &targets.mask);
@@ -492,7 +552,11 @@ impl Renderer {
             globals,
             globals_bind,
             cube,
+            tube_mesh,
+            tube_vertex_count: tube_vertices.len() as u32,
             box_pipeline,
+            tube_pipeline,
+            tube_mask_pipeline,
             ghost_pipeline,
             mask_pipeline,
             label_pipeline,
@@ -594,6 +658,8 @@ impl Renderer {
         let opaque = self.instance_buffer("opaque", &scene.opaque);
         let translucent = self.instance_buffer("translucent", &scene.translucent);
         let selected = self.instance_buffer("selected", &scene.selected);
+        let tubes = self.tube_buffer("tubes", &scene.tubes);
+        let selected_tubes = self.tube_buffer("selected tubes", &scene.selected_tubes);
         let label_raw: Vec<LabelRaw> = scene
             .labels
             .iter()
@@ -653,6 +719,12 @@ impl Renderer {
                 pass.set_vertex_buffer(1, buffer.slice(..));
                 pass.draw(0..36, 0..scene.opaque.len() as u32);
             }
+            if let Some(buffer) = &tubes {
+                pass.set_pipeline(&self.tube_pipeline);
+                pass.set_vertex_buffer(0, self.tube_mesh.slice(..));
+                pass.set_vertex_buffer(1, buffer.slice(..));
+                pass.draw(0..self.tube_vertex_count, 0..scene.tubes.len() as u32);
+            }
             if let Some(buffer) = &floor_buffer {
                 pass.set_pipeline(&self.floor_pipeline);
                 pass.set_vertex_buffer(0, buffer.slice(..));
@@ -673,7 +745,7 @@ impl Renderer {
                 pass.draw(0..36, 0..scene.translucent.len() as u32);
             }
         }
-        if let Some(buffer) = &selected {
+        if selected.is_some() || selected_tubes.is_some() {
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("selection mask"),
@@ -691,11 +763,22 @@ impl Renderer {
                     occlusion_query_set: None,
                     multiview_mask: None,
                 });
-                pass.set_pipeline(&self.mask_pipeline);
                 pass.set_bind_group(0, &self.globals_bind, &[]);
-                pass.set_vertex_buffer(0, self.cube.slice(..));
-                pass.set_vertex_buffer(1, buffer.slice(..));
-                pass.draw(0..36, 0..scene.selected.len() as u32);
+                if let Some(buffer) = &selected {
+                    pass.set_pipeline(&self.mask_pipeline);
+                    pass.set_vertex_buffer(0, self.cube.slice(..));
+                    pass.set_vertex_buffer(1, buffer.slice(..));
+                    pass.draw(0..36, 0..scene.selected.len() as u32);
+                }
+                if let Some(buffer) = &selected_tubes {
+                    pass.set_pipeline(&self.tube_mask_pipeline);
+                    pass.set_vertex_buffer(0, self.tube_mesh.slice(..));
+                    pass.set_vertex_buffer(1, buffer.slice(..));
+                    pass.draw(
+                        0..self.tube_vertex_count,
+                        0..scene.selected_tubes.len() as u32,
+                    );
+                }
             }
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("outline"),
@@ -794,6 +877,20 @@ impl Renderer {
                 min: b.aabb.min.to_array(),
                 max: b.aabb.max.to_array(),
                 color: b.color,
+            })
+            .collect();
+        self.vertex_buffer(label, bytemuck::cast_slice(&raw))
+    }
+
+    fn tube_buffer(&self, label: &str, tubes: &[TubeInstance]) -> Option<wgpu::Buffer> {
+        let raw: Vec<TubeRaw> = tubes
+            .iter()
+            .map(|t| TubeRaw {
+                a: t.a.to_array(),
+                radius: t.radius,
+                b: t.b.to_array(),
+                _pad: 0.0,
+                color: t.color,
             })
             .collect();
         self.vertex_buffer(label, bytemuck::cast_slice(&raw))
@@ -1008,4 +1105,63 @@ fn unit_cube() -> Vec<CubeVertex> {
             })
         })
         .collect()
+}
+
+/// A prism of `TUBE_SIDES` sides around the z axis, radius 1, from z = 0 to z = 1, with end
+/// caps; counter-clockwise when seen from outside. Side normals are radial, so the shading
+/// looks round.
+fn unit_tube() -> Vec<CubeVertex> {
+    let ring = |i: usize| {
+        let angle = i as f32 / TUBE_SIDES as f32 * std::f32::consts::TAU;
+        (angle.cos(), angle.sin())
+    };
+    let vertex = |(x, y): (f32, f32), z: f32, normal: [f32; 3]| CubeVertex {
+        position: [x, y, z],
+        normal,
+    };
+    let mut vertices = Vec::with_capacity(TUBE_SIDES * 12);
+    for i in 0..TUBE_SIDES {
+        let (p, q) = (ring(i), ring(i + 1));
+        let (np, nq) = ([p.0, p.1, 0.0], [q.0, q.1, 0.0]);
+        vertices.extend([
+            vertex(p, 0.0, np),
+            vertex(q, 0.0, nq),
+            vertex(q, 1.0, nq),
+            vertex(p, 0.0, np),
+            vertex(q, 1.0, nq),
+            vertex(p, 1.0, np),
+        ]);
+        vertices.extend([
+            vertex((0.0, 0.0), 1.0, [0.0, 0.0, 1.0]),
+            vertex(p, 1.0, [0.0, 0.0, 1.0]),
+            vertex(q, 1.0, [0.0, 0.0, 1.0]),
+            vertex((0.0, 0.0), 0.0, [0.0, 0.0, -1.0]),
+            vertex(q, 0.0, [0.0, 0.0, -1.0]),
+            vertex(p, 0.0, [0.0, 0.0, -1.0]),
+        ]);
+    }
+    vertices
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec3;
+
+    use super::*;
+
+    /// Every triangle of the mesh is counter-clockwise seen from outside (survives culling).
+    fn assert_outward(vertices: &[CubeVertex], centre: Vec3) {
+        for tri in vertices.chunks(3) {
+            let [a, b, c] = [0, 1, 2].map(|i| Vec3::from(tri[i].position));
+            let facing = (b - a).cross(c - a);
+            let outward = (a + b + c) / 3.0 - centre;
+            assert!(facing.dot(outward) > 0.0, "inward triangle {a} {b} {c}");
+        }
+    }
+
+    #[test]
+    fn meshes_face_outwards() {
+        assert_outward(&unit_cube(), Vec3::splat(0.5));
+        assert_outward(&unit_tube(), Vec3::new(0.0, 0.0, 0.5));
+    }
 }

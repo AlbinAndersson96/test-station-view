@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use tsv_core::ids::{DeviceId, PortId, RackId};
+use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
 use tsv_core::limits::Limits;
-use tsv_core::model::{Device, DeviceKind, Document, Port, PortKind, Rack, Rgb};
+use tsv_core::model::{Cable, Device, DeviceKind, Document, Port, PortKind, Rack, Rgb};
 use tsv_core::name::{DocumentName, Name};
 
 pub fn limits() -> Limits {
@@ -53,9 +53,20 @@ pub fn doc(racks: Vec<Rack>) -> Document {
     Document {
         name: DocumentName::parse("Test").unwrap(),
         racks,
+        cables: Vec::new(),
     }
 }
 
 pub fn assert_close(a: f32, b: f32) {
     assert!((a - b).abs() < 1e-3, "{a} != {b}");
+}
+
+pub fn cable(n: &str, a: PortId, b: PortId) -> Cable {
+    Cable {
+        id: CableId::new(),
+        name: name(n),
+        color: Rgb::CABLE_BLUE,
+        a,
+        b,
+    }
 }

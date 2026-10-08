@@ -51,6 +51,7 @@ fn doc(racks: Vec<Rack>) -> Document {
     Document {
         name: DocumentName::parse("Test").unwrap(),
         racks,
+        cables: Vec::new(),
     }
 }
 use tsv_app::forms::*;

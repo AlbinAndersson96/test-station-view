@@ -190,3 +190,97 @@ fn rack_height_must_not_exceed_the_limit() {
         })
     );
 }
+
+fn two_ported_devices() -> Document {
+    doc(vec![rack(
+        "R",
+        42,
+        vec![
+            with_ports(device("A", 1, 1), vec![port("P1", 0, 0), port("P2", 0, 1)]),
+            with_ports(device("B", 2, 1), vec![port("P1", 0, 0)]),
+        ],
+    )])
+}
+
+fn port_ids(
+    d: &Document,
+) -> (
+    tsv_core::ids::PortId,
+    tsv_core::ids::PortId,
+    tsv_core::ids::PortId,
+) {
+    let a = &d.racks[0].devices[0].ports;
+    let b = &d.racks[0].devices[1].ports;
+    (a[0].id, a[1].id, b[0].id)
+}
+
+#[test]
+fn documents_with_cables_are_valid() {
+    let mut d = two_ported_devices();
+    let (a1, a2, b1) = port_ids(&d);
+    d.cables = vec![cable("C1", a1, b1)];
+    assert_eq!(check(&d), Ok(()));
+    d.cables = vec![cable("C1", a1, a2)];
+    assert_eq!(check(&d), Ok(()));
+}
+
+#[test]
+fn cable_ids_must_be_unique_among_all_ids() {
+    let mut d = two_ported_devices();
+    let (a1, _, b1) = port_ids(&d);
+    let mut c = cable("C1", a1, b1);
+    c.id = tsv_core::ids::CableId(d.racks[0].id.0);
+    d.cables = vec![c];
+    assert!(matches!(check(&d), Err(ValidationError::DuplicateId(_))));
+}
+
+#[test]
+fn cable_names_must_be_unique() {
+    let mut d = two_ported_devices();
+    let (a1, a2, b1) = port_ids(&d);
+    d.cables = vec![cable("Lead", a1, b1), cable("LEAD", a2, a1)];
+    // The name check comes before the per-port check.
+    assert_eq!(
+        check(&d),
+        Err(ValidationError::DuplicateCableName(s("LEAD")))
+    );
+    d.cables[1].a = a2;
+    d.cables[1].b = tsv_core::ids::PortId::new();
+    d.cables[1].name = name("Other");
+    assert_eq!(
+        check(&d),
+        Err(ValidationError::CableEndMissing { cable: s("Other") })
+    );
+}
+
+#[test]
+fn cable_ends_must_differ() {
+    let mut d = two_ported_devices();
+    let (a1, _, _) = port_ids(&d);
+    d.cables = vec![cable("Loop", a1, a1)];
+    assert_eq!(
+        check(&d),
+        Err(ValidationError::CableEndsEqual { cable: s("Loop") })
+    );
+}
+
+#[test]
+fn a_port_takes_at_most_one_cable() {
+    let mut d = two_ported_devices();
+    let (a1, a2, b1) = port_ids(&d);
+    d.cables = vec![cable("C1", a1, b1), cable("C2", a2, b1)];
+    let err = check(&d).unwrap_err();
+    assert_eq!(
+        err,
+        ValidationError::PortHasTwoCables {
+            device: s("B"),
+            port: s("P1"),
+            a: s("C1"),
+            b: s("C2"),
+        }
+    );
+    assert_eq!(
+        err.to_string(),
+        "Device 'B': port 'P1' has two cables, 'C1' and 'C2'"
+    );
+}

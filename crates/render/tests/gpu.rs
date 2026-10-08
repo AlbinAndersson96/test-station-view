@@ -4,7 +4,7 @@ use glam::{Vec2, Vec3};
 use tsv_render::camera::{FOV_Y, MAX_DISTANCE_MM, OrbitCamera};
 use tsv_render::gpu::{FrameStatus, Renderer};
 use tsv_render::layout::{Aabb, FaceRect, LABEL_OFFSET_MM};
-use tsv_render::scene::{BACKGROUND, BoxInstance, Floor, Label, Scene};
+use tsv_render::scene::{BACKGROUND, BoxInstance, Floor, Label, Scene, TubeInstance};
 use tsv_render::text::TextRasterizer;
 
 const SIZE: u32 = 64;
@@ -400,4 +400,84 @@ fn the_floor_shows_grid_lines_that_fade_out_at_its_edge() {
     };
     r.render(&scene, &below, &mut SolidText).unwrap();
     assert_eq!(pixel(&r.read_pixels().unwrap(), 32, 32), background());
+}
+
+/// A green tube 100 mm thick (about 8 px) from `a` to `b`.
+fn tube(a: Vec3, b: Vec3) -> TubeInstance {
+    TubeInstance {
+        a,
+        b,
+        radius: 50.0,
+        color: [0.0, 1.0, 0.0, 1.0],
+    }
+}
+
+fn is_green([red, green, blue, _]: [u8; 4]) -> bool {
+    green > 100 && red < 40 && blue < 40
+}
+
+#[test]
+fn tubes_are_drawn_in_any_direction() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let (left, right) = (Vec3::new(-300.0, 0.0, 0.0), Vec3::new(300.0, 0.0, 0.0));
+    let (down, up) = (Vec3::new(0.0, -300.0, 0.0), Vec3::new(0.0, 300.0, 0.0));
+    let (back, front) = (Vec3::new(0.0, 0.0, -300.0), Vec3::new(0.0, 0.0, 300.0));
+    for (a, b) in [
+        (left, right),
+        (right, left),
+        (down, up),
+        (up, down),
+        (back, front),
+    ] {
+        let scene = Scene {
+            tubes: vec![tube(a, b)],
+            ..Default::default()
+        };
+        let p = draw(&mut r, &scene);
+        assert!(
+            is_green(pixel(&p, 32, 32)),
+            "{a} → {b}: {:?}",
+            pixel(&p, 32, 32)
+        );
+        assert_eq!(pixel(&p, 12, 12), background(), "{a} → {b}");
+    }
+}
+
+#[test]
+fn tubes_are_shaded_round() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let scene = Scene {
+        tubes: vec![tube(
+            Vec3::new(-300.0, 0.0, 0.0),
+            Vec3::new(300.0, 0.0, 0.0),
+        )],
+        ..Default::default()
+    };
+    let p = draw(&mut r, &scene);
+    // The light comes from above: the upper side is brighter than the lower side.
+    let (upper, lower) = (pixel(&p, 32, 30)[1], pixel(&p, 32, 34)[1]);
+    assert!(upper > lower, "upper {upper}, lower {lower}");
+    assert_eq!(pixel(&p, 32, 20), background());
+}
+
+#[test]
+fn a_selected_tube_glows() {
+    let _gpu = gpu_lock();
+    let Some(mut r) = renderer() else { return };
+    let t = tube(Vec3::new(-300.0, 0.0, 0.0), Vec3::new(300.0, 0.0, 0.0));
+    let scene = Scene {
+        tubes: vec![t],
+        selected_tubes: vec![t],
+        ..Default::default()
+    };
+    let p = draw(&mut r, &scene);
+    let column: Vec<[u8; 4]> = (22..30).map(|y| pixel(&p, 32, y)).collect();
+    assert!(
+        column
+            .iter()
+            .any(|&[red, green, blue, _]| red > 240 && (150..220).contains(&green) && blue < 120),
+        "no glow above the tube: {column:?}"
+    );
 }

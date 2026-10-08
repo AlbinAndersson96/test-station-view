@@ -1,3 +1,4 @@
+use crate::edit::cable::drop_dangling_cables;
 use crate::edit::{ObjectId, Plan, Rejection};
 use crate::ids::{DeviceId, RackId};
 use crate::limits::Limits;
@@ -66,6 +67,7 @@ pub fn plan_remove_device(doc: &Document, device_id: DeviceId) -> Result<Plan, R
     let (ri, di) = doc.device_location(device_id).ok_or(Rejection::NotFound)?;
     let mut document = doc.clone();
     document.racks[ri].devices.remove(di);
+    drop_dangling_cables(&mut document);
     Ok(Plan {
         document,
         subject: None,

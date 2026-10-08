@@ -10,8 +10,9 @@ use tsv_core::model::{Document, Rgb};
 use tsv_core::port_grid::Cell;
 
 use crate::layout::{
-    Aabb, FLOOR_MARGIN_MM, FaceRect, device_box, device_name_rect, port_label_rect,
-    port_marker_box, rack_name_rect, rack_parts, scene_bounds, u_label_rect,
+    Aabb, CABLE_RADIUS_MM, FLOOR_MARGIN_MM, FaceRect, cable_path, device_box, device_name_rect,
+    marker_anchor, port_label_rect, port_marker_box, rack_name_rect, rack_parts, scene_bounds,
+    u_label_rect,
 };
 
 pub const BACKGROUND: Rgb = Rgb {
@@ -43,6 +44,16 @@ pub struct BoxInstance {
     pub color: [f32; 4],
 }
 
+/// One straight piece of a cable: a tube from `a` to `b`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TubeInstance {
+    pub a: Vec3,
+    pub b: Vec3,
+    pub radius: f32,
+    /// Straight RGBA, 0..1.
+    pub color: [f32; 4],
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
     pub text: String,
@@ -59,6 +70,15 @@ pub struct Ghost {
     pub valid: bool,
 }
 
+/// The cable being drawn: from its start port to the pointer (or the port under it).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CablePreview {
+    pub from: Vec3,
+    pub to: Vec3,
+    /// `false` draws it red: releasing here would be rejected.
+    pub valid: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct SceneInput<'a> {
     /// The document to show: the committed one, or a previewed plan's document.
@@ -67,6 +87,7 @@ pub struct SceneInput<'a> {
     pub selection: Option<ObjectId>,
     pub hovered_port: Option<PortId>,
     pub ghost: Option<Ghost>,
+    pub cable_preview: Option<CablePreview>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -75,6 +96,10 @@ pub struct Scene {
     pub translucent: Vec<BoxInstance>,
     /// Boxes that get the selection outline.
     pub selected: Vec<BoxInstance>,
+    /// Cable segments (opaque).
+    pub tubes: Vec<TubeInstance>,
+    /// Cable segments that get the selection outline.
+    pub selected_tubes: Vec<TubeInstance>,
     pub labels: Vec<Label>,
     /// The floor grid under the racks; `None` draws no floor.
     pub floor: Option<Floor>,
@@ -180,6 +205,12 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
         min: Vec2::new(bounds.min.x, bounds.min.z) - FLOOR_MARGIN_MM,
         max: Vec2::new(bounds.max.x, bounds.max.z) + FLOOR_MARGIN_MM,
     });
+    let selected_cable = match input.selection {
+        Some(ObjectId::Cable(c)) => doc.cable(c),
+        _ => None,
+    };
+    // Where each port's cable end is drawn (its marker's displayed position).
+    let mut anchors: HashMap<PortId, Vec3> = HashMap::new();
     for (ri, rack) in doc.racks.iter().enumerate() {
         let rack_selected = input.selection == Some(ObjectId::Rack(rack.id));
         for part in rack_parts(ri, rack) {
@@ -244,11 +275,13 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
                     color: rgba(marker_color, 1.0),
                 };
                 scene.opaque.push(b);
+                anchors.insert(port.id, marker_anchor(&b.aabb));
                 let selected = input.selection == Some(pid);
                 if selected {
                     scene.selected.push(b);
                 }
-                if selected || device_selected || input.hovered_port == Some(port.id) {
+                let cable_end = selected_cable.is_some_and(|c| c.touches(port.id));
+                if selected || device_selected || cable_end || input.hovered_port == Some(port.id) {
                     scene.labels.push(Label {
                         text: port.name.to_string(),
                         rect: port_label_rect(ri, device, cell, input.limits).translated(offset),
@@ -257,6 +290,25 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
                 }
             }
         }
+    }
+    for cable in &doc.cables {
+        let (Some(&a), Some(&b)) = (anchors.get(&cable.a), anchors.get(&cable.b)) else {
+            continue;
+        };
+        let start = scene.tubes.len();
+        push_cable(&mut scene.tubes, a, b, rgba(cable.color, 1.0));
+        if selected_cable.is_some_and(|c| c.id == cable.id) {
+            let tubes = scene.tubes[start..].to_vec();
+            scene.selected_tubes.extend(tubes);
+        }
+    }
+    if let Some(preview) = input.cable_preview {
+        let color = if preview.valid {
+            Rgb::CABLE_BLUE
+        } else {
+            GHOST_INVALID
+        };
+        push_cable(&mut scene.tubes, preview.from, preview.to, rgba(color, 1.0));
     }
     if let Some(ghost) = input.ghost {
         let color = if ghost.valid {
@@ -270,4 +322,14 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
         });
     }
     scene
+}
+
+fn push_cable(tubes: &mut Vec<TubeInstance>, a: Vec3, b: Vec3, color: [f32; 4]) {
+    let path = cable_path(a, b);
+    tubes.extend(path.windows(2).map(|pair| TubeInstance {
+        a: pair[0],
+        b: pair[1],
+        radius: CABLE_RADIUS_MM,
+        color,
+    }));
 }

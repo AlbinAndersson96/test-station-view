@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::ids::{DeviceId, PortId, RackId};
+use crate::ids::{CableId, DeviceId, PortId, RackId};
 use crate::limits::Limits;
-use crate::model::{Device, DeviceKind, Document, Port, PortKind, Rack, Rgb};
+use crate::model::{Cable, Device, DeviceKind, Document, Port, PortKind, Rack, Rgb};
 use crate::name::{DocumentName, Name};
 use crate::validate::{ValidationError, validate};
 
-pub const FORMAT_VERSION: u64 = 1;
+pub const FORMAT_VERSION: u64 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LoadError {
@@ -36,6 +36,7 @@ struct FileDocument {
     format_version: u64,
     name: String,
     racks: Vec<FileRack>,
+    cables: Vec<FileCable>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -68,6 +69,15 @@ struct FilePort {
     kind: FilePortKind,
 }
 
+#[derive(Serialize, Deserialize)]
+struct FileCable {
+    id: Uuid,
+    name: String,
+    color: String,
+    a: Uuid,
+    b: Uuid,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 enum FileDeviceKind {
@@ -87,6 +97,7 @@ pub fn to_json(doc: &Document) -> String {
         format_version: FORMAT_VERSION,
         name: doc.name.as_str().to_owned(),
         racks: doc.racks.iter().map(rack_to_file).collect(),
+        cables: doc.cables.iter().map(cable_to_file).collect(),
     };
     serde_json::to_string_pretty(&file).expect("serializing plain data cannot fail")
 }
@@ -108,10 +119,17 @@ pub fn from_json(text: &str, limits: &Limits) -> Result<Document, LoadError> {
     Ok(doc)
 }
 
-/// Upgrades older format versions step by step to `FORMAT_VERSION`. Version 1 is current.
-fn migrate(value: Value, version: u64) -> Result<Value, LoadError> {
+/// Upgrades older format versions step by step to `FORMAT_VERSION`.
+fn migrate(mut value: Value, version: u64) -> Result<Value, LoadError> {
     match version {
-        1 => Ok(value),
+        // Version 2 added cables.
+        1 => {
+            if let Some(object) = value.as_object_mut() {
+                object.insert("cables".into(), Value::Array(Vec::new()));
+            }
+            migrate(value, 2)
+        }
+        2 => Ok(value),
         other => Err(LoadError::Malformed(format!(
             "unsupported format version {other}"
         ))),
@@ -153,6 +171,16 @@ fn port_to_file(port: &Port) -> FilePort {
     }
 }
 
+fn cable_to_file(cable: &Cable) -> FileCable {
+    FileCable {
+        id: cable.id.0,
+        name: cable.name.as_str().to_owned(),
+        color: cable.color.to_hex(),
+        a: cable.a.0,
+        b: cable.b.0,
+    }
+}
+
 fn document_from_file(file: FileDocument, limits: &Limits) -> Result<Document, LoadError> {
     let name = DocumentName::parse(&file.name).map_err(|e| LoadError::InvalidName {
         name: file.name.clone(),
@@ -169,7 +197,26 @@ fn document_from_file(file: FileDocument, limits: &Limits) -> Result<Document, L
         .into_iter()
         .map(|r| rack_from_file(r, limits))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Document { name, racks })
+    let cables = file
+        .cables
+        .into_iter()
+        .map(|c| cable_from_file(c, limits))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Document {
+        name,
+        racks,
+        cables,
+    })
+}
+
+fn cable_from_file(cable: FileCable, limits: &Limits) -> Result<Cable, LoadError> {
+    Ok(Cable {
+        id: CableId(cable.id),
+        name: strict_name(&cable.name, limits)?,
+        color: Rgb::from_hex(&cable.color).ok_or(LoadError::InvalidColor(cable.color))?,
+        a: PortId(cable.a),
+        b: PortId(cable.b),
+    })
 }
 
 fn rack_from_file(rack: FileRack, limits: &Limits) -> Result<Rack, LoadError> {

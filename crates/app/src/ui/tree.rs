@@ -1,4 +1,4 @@
-//! The tree: Document → Rack → Device → Port (spec §4.3 "Tree").
+//! The tree: Document → Rack → Device → Port (spec §4.3 "Tree"), then the cables.
 
 use leptos::prelude::*;
 use tsv_core::edit::ObjectId;
@@ -23,13 +23,14 @@ fn row_id(id: ObjectId) -> String {
         ObjectId::Rack(r) => format!("row-{}", r.0),
         ObjectId::Device(d) => format!("row-{}", d.0),
         ObjectId::Port(p) => format!("row-{}", p.0),
+        ObjectId::Cable(c) => format!("row-{}", c.0),
     }
 }
 
 /// The rack and device that contain `id` (the rows that must be expanded to show it).
 fn parents(id: ObjectId) -> Vec<ObjectId> {
     read(|s| match id {
-        ObjectId::Rack(_) => vec![],
+        ObjectId::Rack(_) | ObjectId::Cable(_) => vec![],
         ObjectId::Device(d) => s
             .document()
             .device(d)
@@ -83,7 +84,9 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
                     rows.push(Row {
                         target: RenameTarget::Object(ObjectId::Port(port.id)),
                         label: port.name.to_string(),
-                        detail: String::new(),
+                        detail: doc
+                            .cable_at_port(port.id)
+                            .map_or(String::new(), |c| c.name.to_string()),
                         depth: 3,
                         rack_index: None,
                         expander: None,
@@ -92,6 +95,29 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
             }
         }
         rows
+    })
+}
+
+/// One row per cable: its name, and its ends as `Device.Port – Device.Port`.
+fn cable_rows() -> Vec<Row> {
+    read(|s| {
+        let doc = s.document();
+        let end = |port| {
+            doc.port(port).map_or("—".to_string(), |(_, d, p)| {
+                format!("{}.{}", d.name, p.name)
+            })
+        };
+        doc.cables
+            .iter()
+            .map(|c| Row {
+                target: RenameTarget::Object(ObjectId::Cable(c.id)),
+                label: c.name.to_string(),
+                detail: format!("{} – {}", end(c.a), end(c.b)),
+                depth: 1,
+                rack_index: None,
+                expander: None,
+            })
+            .collect()
     })
 }
 
@@ -137,6 +163,25 @@ pub fn Tree() -> impl IntoView {
             }}
         </ul>
         <button class="add-rack" on:click=move |_| update(|s| s.add_rack())>"Add rack"</button>
+        {move || {
+            sig.rev.track();
+            let rows = cable_rows();
+            (!rows.is_empty()).then(|| {
+                let selection = read(|s| s.selection());
+                view! {
+                    <h3 class="tree-heading">"Cables"</h3>
+                    <ul class="tree">
+                        {rows
+                            .into_iter()
+                            .map(|row| {
+                                let selected = matches!(row.target, RenameTarget::Object(id) if Some(id) == selection);
+                                view! { <TreeRow row=row selected=selected collapsed=collapsed /> }
+                            })
+                            .collect_view()}
+                    </ul>
+                }
+            })
+        }}
     }
 }
 

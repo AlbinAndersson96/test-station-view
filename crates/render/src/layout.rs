@@ -5,8 +5,9 @@
 
 use glam::{Vec2, Vec3};
 use tsv_core::edit::ObjectId;
+use tsv_core::ids::PortId;
 use tsv_core::limits::Limits;
-use tsv_core::model::{Device, Document, Rack};
+use tsv_core::model::{Cable, Device, Document, Rack};
 use tsv_core::port_grid::Cell;
 
 pub const U_MM: f32 = 44.45;
@@ -24,6 +25,9 @@ pub const PORT_PROTRUSION_MM: f32 = 6.0;
 pub const FLOOR_MARGIN_MM: f32 = 1500.0;
 /// Labels float this far in front of the surface they are printed on.
 pub const LABEL_OFFSET_MM: f32 = 1.0;
+/// Cables are tubes of this radius, drawn as this many straight segments.
+pub const CABLE_RADIUS_MM: f32 = 3.5;
+pub const CABLE_SEGMENTS: usize = 24;
 
 /// Axis-aligned box.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -245,6 +249,41 @@ pub fn port_label_rect(
     }
 }
 
+/// Where a cable plugs into the port drawn as `marker`: the centre of its front face.
+pub fn marker_anchor(marker: &Aabb) -> Vec3 {
+    let c = marker.center();
+    Vec3::new(c.x, c.y, marker.max.z)
+}
+
+/// Where a cable plugs into `port`, if it exists.
+pub fn port_anchor(doc: &Document, limits: &Limits, port: PortId) -> Option<Vec3> {
+    object_bounds(doc, limits, ObjectId::Port(port)).map(|m| marker_anchor(&m))
+}
+
+/// `CABLE_SEGMENTS + 1` points of a cable from `a` to `b`: a cubic Bézier curve whose inner
+/// control points stand out in front of the ends (+Z) and lower, so the cable leaves both ports
+/// towards the viewer and sags between them.
+pub fn cable_path(a: Vec3, b: Vec3) -> Vec<Vec3> {
+    let span = a.distance(b);
+    let out = (span * 0.35).clamp(60.0, 300.0);
+    let lift = Vec3::new(0.0, -span * 0.2, out);
+    let (p1, p2) = (a + lift, b + lift);
+    (0..=CABLE_SEGMENTS)
+        .map(|i| {
+            let t = i as f32 / CABLE_SEGMENTS as f32;
+            let s = 1.0 - t;
+            a * (s * s * s) + p1 * (3.0 * s * s * t) + p2 * (3.0 * s * t * t) + b * (t * t * t)
+        })
+        .collect()
+}
+
+/// The resting path of `cable`; `None` if an end is not a port of `doc`.
+pub fn cable_points(doc: &Document, limits: &Limits, cable: &Cable) -> Option<Vec<Vec3>> {
+    let a = port_anchor(doc, limits, cable.a)?;
+    let b = port_anchor(doc, limits, cable.b)?;
+    Some(cable_path(a, b))
+}
+
 /// Bounds of everything in the document; a default 42U rack's bounds when it has no racks.
 pub fn scene_bounds(doc: &Document) -> Aabb {
     let default_rack;
@@ -266,7 +305,7 @@ pub fn scene_bounds(doc: &Document) -> Aabb {
         .expect("at least one rack part")
 }
 
-/// The world-space bounds of a rack (all its parts), device or port marker.
+/// The world-space bounds of a rack (all its parts), device, port marker or cable.
 pub fn object_bounds(doc: &Document, limits: &Limits, id: ObjectId) -> Option<Aabb> {
     match id {
         ObjectId::Rack(rack_id) => {
@@ -298,5 +337,14 @@ pub fn object_bounds(doc: &Document, limits: &Limits, id: ObjectId) -> Option<Aa
                 })
             })
         }),
+        ObjectId::Cable(cable_id) => {
+            let cable = doc.cable(cable_id)?;
+            let points = cable_points(doc, limits, cable)?;
+            let r = Vec3::splat(CABLE_RADIUS_MM);
+            points
+                .iter()
+                .map(|&p| Aabb::new(p - r, p + r))
+                .reduce(|a, b| a.union(&b))
+        }
     }
 }

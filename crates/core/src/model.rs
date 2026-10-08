@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 
-use crate::ids::{DeviceId, PortId, RackId};
+use crate::ids::{CableId, DeviceId, PortId, RackId};
 use crate::limits::Limits;
 use crate::name::{DocumentName, Name};
 
@@ -19,6 +19,12 @@ impl Rgb {
         r: 0xa0,
         g: 0xa0,
         b: 0xa0,
+    };
+    /// The colour of a new cable.
+    pub const CABLE_BLUE: Rgb = Rgb {
+        r: 0x2f,
+        g: 0x6f,
+        b: 0xd6,
     };
 
     pub fn to_hex(self) -> String {
@@ -109,11 +115,32 @@ impl Rack {
     }
 }
 
+/// A cable between two different ports. The order of `a` and `b` carries no meaning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cable {
+    pub id: CableId,
+    pub name: Name,
+    pub color: Rgb,
+    pub a: PortId,
+    pub b: PortId,
+}
+
+impl Cable {
+    pub fn ends(&self) -> [PortId; 2] {
+        [self.a, self.b]
+    }
+
+    pub fn touches(&self, port: PortId) -> bool {
+        self.a == port || self.b == port
+    }
+}
+
 /// `racks` order is the left-to-right order of the row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Document {
     pub name: DocumentName,
     pub racks: Vec<Rack>,
+    pub cables: Vec<Cable>,
 }
 
 impl Document {
@@ -126,6 +153,7 @@ impl Document {
                 height_u: DEFAULT_RACK_HEIGHT_U,
                 devices: Vec::new(),
             }],
+            cables: Vec::new(),
         }
     }
 
@@ -144,6 +172,15 @@ impl Document {
         let rack = &self.racks[ri];
         let device = &rack.devices[di];
         Some((rack, device, &device.ports[pi]))
+    }
+
+    pub fn cable(&self, id: CableId) -> Option<&Cable> {
+        self.cables.iter().find(|c| c.id == id)
+    }
+
+    /// The cable plugged into `port`, if any.
+    pub fn cable_at_port(&self, port: PortId) -> Option<&Cable> {
+        self.cables.iter().find(|c| c.touches(port))
     }
 
     pub(crate) fn rack_index(&self, id: RackId) -> Option<usize> {

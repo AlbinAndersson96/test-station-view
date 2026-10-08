@@ -3,20 +3,20 @@
 
 use glam::{Vec2, Vec3};
 use tsv_core::edit::{
-    ObjectId, Plan, Rejection, plan_add_rack, plan_move_rack, plan_new_document,
-    plan_remove_device, plan_remove_port, plan_remove_rack, plan_rename_device,
-    plan_rename_document, plan_rename_port, plan_rename_rack, plan_set_device_color,
-    plan_set_device_height, plan_set_rack_height,
+    ObjectId, Plan, Rejection, plan_add_rack, plan_move_rack, plan_new_document, plan_remove_cable,
+    plan_remove_device, plan_remove_port, plan_remove_rack, plan_rename_cable, plan_rename_device,
+    plan_rename_document, plan_rename_port, plan_rename_rack, plan_set_cable_color,
+    plan_set_device_color, plan_set_device_height, plan_set_rack_height,
 };
 use tsv_core::editor::Editor;
 use tsv_core::file_format::{from_json, to_json};
-use tsv_core::ids::{DeviceId, PortId, RackId};
+use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
 use tsv_core::limits::Limits;
 use tsv_core::model::{Document, Rgb};
 use tsv_render::camera::OrbitCamera;
 use tsv_render::layout::{object_bounds, scene_bounds};
 use tsv_render::pick::Ray;
-use tsv_render::scene::{Ghost, Scene, SceneInput, animation_targets, build_scene};
+use tsv_render::scene::{CablePreview, Ghost, Scene, SceneInput, animation_targets, build_scene};
 use tsv_render::view::ViewState;
 
 use crate::forms::{capitalise, export_file_name, parse_document_name, parse_height, parse_name};
@@ -47,6 +47,7 @@ pub struct Session {
     pub(crate) hovered_port: Option<PortId>,
     pub(crate) preview: Option<Plan>,
     pub(crate) ghost: Option<Ghost>,
+    pub(crate) cable_preview: Option<CablePreview>,
     last_frame_s: Option<f64>,
     revision: u64,
     ui_revision: u64,
@@ -71,6 +72,7 @@ impl Session {
             hovered_port: None,
             preview: None,
             ghost: None,
+            cable_preview: None,
             last_frame_s: None,
             revision: 0,
             ui_revision: 0,
@@ -212,7 +214,7 @@ impl Session {
         let _ = self.apply(result);
     }
 
-    /// Renames a rack, device or port from user text.
+    /// Renames a rack, device, port or cable from user text.
     pub fn rename(&mut self, id: ObjectId, text: &str) -> Result<(), String> {
         let name = parse_name(text, &self.limits)?;
         let doc = self.editor.document();
@@ -220,6 +222,7 @@ impl Session {
             ObjectId::Rack(r) => plan_rename_rack(doc, r, name),
             ObjectId::Device(d) => plan_rename_device(doc, d, name),
             ObjectId::Port(p) => plan_rename_port(doc, p, name),
+            ObjectId::Cable(c) => plan_rename_cable(doc, c, name),
         };
         self.apply(result)
     }
@@ -248,6 +251,11 @@ impl Session {
         let _ = self.apply(result);
     }
 
+    pub fn set_cable_color(&mut self, cable: CableId, color: Rgb) {
+        let result = plan_set_cable_color(self.editor.document(), cable, color);
+        let _ = self.apply(result);
+    }
+
     /// Deletes `id`, unless it is a rack with devices, which needs confirmation first.
     pub fn request_delete(&mut self, id: ObjectId) -> DeleteOutcome {
         if let ObjectId::Rack(r) = id
@@ -270,6 +278,7 @@ impl Session {
             ObjectId::Rack(r) => plan_remove_rack(doc, r),
             ObjectId::Device(d) => plan_remove_device(doc, d),
             ObjectId::Port(p) => plan_remove_port(doc, p),
+            ObjectId::Cable(c) => plan_remove_cable(doc, c),
         };
         let _ = self.apply(result);
     }
@@ -351,7 +360,7 @@ impl Session {
         match self.selection? {
             ObjectId::Device(d) => Some(d),
             ObjectId::Port(p) => self.editor.document().port(p).map(|(_, d, _)| d.id),
-            ObjectId::Rack(_) => None,
+            ObjectId::Rack(_) | ObjectId::Cable(_) => None,
         }
     }
 
@@ -380,6 +389,7 @@ impl Session {
             selection: self.selection,
             hovered_port: self.hovered_port,
             ghost: self.ghost,
+            cable_preview: self.cable_preview,
         };
         build_scene(&input, &self.view.motion)
     }
@@ -390,5 +400,6 @@ fn exists(doc: &Document, id: ObjectId) -> bool {
         ObjectId::Rack(r) => doc.rack(r).is_some(),
         ObjectId::Device(d) => doc.device(d).is_some(),
         ObjectId::Port(p) => doc.port(p).is_some(),
+        ObjectId::Cable(c) => doc.cable(c).is_some(),
     }
 }

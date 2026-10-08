@@ -37,19 +37,21 @@ with a different look per type.
 
 ### Cables between ports
 
-Connections between ports, the main step towards a digital twin.
+**Done.** See `docs/superpowers/specs/2026-10-08-cables-design.md`. A cable joins two ports,
+anywhere in the document, at most one per port. It has a name and a colour, and it is drawn in
+3D as a sagging tube.
 
-- **Extension point:** ports have stable UUIDs (`PortId`) that never change on rename or move,
-  so a cable can reference its two ends by ID.
-- **Likely shape:**
-  - a `connections` list on `Document`;
-  - edit plans that add or remove cables;
-  - `validate` rules (both ends exist; whether a port may take more than one cable);
-  - deleting a port or device either removes its cables or is rejected.
-- **Open questions:**
-  - Are cables drawn in 3D (routing, front to back), only listed, or both?
-  - Do they have their own names, types or lengths?
-  - Can they connect ports in different racks?
+- **Still open:**
+  - cable type and length;
+  - connector compatibility (once ports have a `PortKind`);
+  - routing through cable trays, and rear-face ports;
+  - several cables per port (splitters);
+  - re-plugging a cable's end by dragging it.
+- **Extension points:**
+  - `Cable` in `crates/core/src/model.rs` and its file-format twin `FileCable` (new fields need
+    a format bump);
+  - `layout::cable_path` for the shape;
+  - the per-port rule in `plan_connect` and `validate::check_cables`.
 
 ### Shared backend storage
 

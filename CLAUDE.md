@@ -45,7 +45,8 @@ with native tests; browser code is a thin layer.**
   - Configurable limits (name length, port grid, max rack height) live only in `Limits`.
 - **`tsv-render` (`crates/render`): world geometry and drawing.**
   - World units are millimetres, Y up, racks along +X with their fronts at z = 0. U1 sits on the
-    plinth. Port row 0 is the bottom row of a device face.
+    plinth. Port row 0 is the bottom row of a device face. Cables are drawn as tube segments
+    (`TubeInstance`) along `layout::cable_path` between port anchors.
   - `layout` (geometry), `pick` (rays, picking, drop targets), `camera` (orbit camera, tweens),
     `scene` (builds draw lists from a document plus selection, hover and ghost; eases moved
     objects) and `view` (camera, tweens, port-placement mode) are pure and tested natively.
