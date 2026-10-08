@@ -79,6 +79,7 @@ fn App() -> impl IntoView {
                     <section class="panel tree-panel"><tree::Tree /></section>
                     <panels::Properties />
                     <panels::NewDeviceForm />
+                    <panels::CatalogPanel />
                     <panels::NewPortForm />
                 </aside>
                 <main class="view"><viewport::Viewport /></main>

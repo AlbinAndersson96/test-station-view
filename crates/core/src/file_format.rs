@@ -5,13 +5,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::ids::{CableId, DeviceId, PortId, RackId};
+use crate::ids::{CableId, DeviceId, ModelId, PortId, RackId};
 use crate::limits::Limits;
-use crate::model::{Cable, Device, DeviceKind, Document, Port, PortKind, Rack, Rgb};
-use crate::name::{DocumentName, Name};
+use crate::model::{
+    Cable, CatalogEntry, Device, DeviceKind, Document, ModelPort, Port, PortKind, Rack, Rgb,
+};
+use crate::name::{DocumentName, ModelText, Name};
 use crate::validate::{ValidationError, validate};
 
-pub const FORMAT_VERSION: u64 = 3;
+pub const FORMAT_VERSION: u64 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LoadError {
@@ -27,6 +29,8 @@ pub enum LoadError {
     InvalidName { name: String, reason: String },
     #[error("Invalid colour '{0}'")]
     InvalidColor(String),
+    #[error("Invalid catalogue text '{text}': {reason}")]
+    InvalidModelText { text: String, reason: String },
     #[error(transparent)]
     Invalid(#[from] ValidationError),
 }
@@ -37,6 +41,26 @@ struct FileDocument {
     name: String,
     racks: Vec<FileRack>,
     cables: Vec<FileCable>,
+    catalog: Vec<FileCatalogEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileCatalogEntry {
+    id: Uuid,
+    manufacturer: String,
+    model: String,
+    height_u: u32,
+    color: String,
+    ports: Vec<FileModelPort>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileModelPort {
+    name: String,
+    row: u32,
+    col: u32,
+    #[serde(default)]
+    kind: FilePortKind,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -83,6 +107,8 @@ struct FileCable {
 enum FileDeviceKind {
     #[default]
     AdHoc,
+    /// Written as `{ "model": "<uuid>" }`.
+    Model(Uuid),
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -108,6 +134,7 @@ pub fn to_json(doc: &Document) -> String {
         name: doc.name.as_str().to_owned(),
         racks: doc.racks.iter().map(rack_to_file).collect(),
         cables: doc.cables.iter().map(cable_to_file).collect(),
+        catalog: doc.catalog.iter().map(entry_to_file).collect(),
     };
     serde_json::to_string_pretty(&file).expect("serializing plain data cannot fail")
 }
@@ -141,7 +168,14 @@ fn migrate(mut value: Value, version: u64) -> Result<Value, LoadError> {
         }
         // Version 3 added port types; the shape is unchanged.
         2 => migrate(value, 3),
-        3 => Ok(value),
+        // Version 4 added the equipment catalogue.
+        3 => {
+            if let Some(object) = value.as_object_mut() {
+                object.insert("catalog".into(), Value::Array(Vec::new()));
+            }
+            migrate(value, 4)
+        }
+        4 => Ok(value),
         other => Err(LoadError::Malformed(format!(
             "unsupported format version {other}"
         ))),
@@ -166,6 +200,7 @@ fn device_to_file(device: &Device) -> FileDevice {
         color: device.color.to_hex(),
         kind: match device.kind {
             DeviceKind::AdHoc => FileDeviceKind::AdHoc,
+            DeviceKind::Model(id) => FileDeviceKind::Model(id.0),
         },
         ports: device.ports.iter().map(port_to_file).collect(),
     }
@@ -177,19 +212,7 @@ fn port_to_file(port: &Port) -> FilePort {
         name: port.name.as_str().to_owned(),
         row: port.row,
         col: port.col,
-        kind: match port.kind {
-            PortKind::Unspecified => FilePortKind::Unspecified,
-            PortKind::Bnc => FilePortKind::Bnc,
-            PortKind::Sma => FilePortKind::Sma,
-            PortKind::NType => FilePortKind::NType,
-            PortKind::Banana => FilePortKind::Banana,
-            PortKind::Usb => FilePortKind::Usb,
-            PortKind::Lan => FilePortKind::Lan,
-            PortKind::Gpib => FilePortKind::Gpib,
-            PortKind::DSub => FilePortKind::DSub,
-            PortKind::Power => FilePortKind::Power,
-            PortKind::Other => FilePortKind::Other,
-        },
+        kind: kind_to_file(port.kind),
     }
 }
 
@@ -224,11 +247,111 @@ fn document_from_file(file: FileDocument, limits: &Limits) -> Result<Document, L
         .into_iter()
         .map(|c| cable_from_file(c, limits))
         .collect::<Result<Vec<_>, _>>()?;
+    let catalog = file
+        .catalog
+        .into_iter()
+        .map(|e| entry_from_file(e, limits))
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(Document {
         name,
         racks,
         cables,
+        catalog,
     })
+}
+
+fn entry_to_file(entry: &CatalogEntry) -> FileCatalogEntry {
+    FileCatalogEntry {
+        id: entry.id.0,
+        manufacturer: entry.manufacturer.to_string(),
+        model: entry.model.to_string(),
+        height_u: entry.height_u,
+        color: entry.color.to_hex(),
+        ports: entry
+            .ports
+            .iter()
+            .map(|p| FileModelPort {
+                name: p.name.as_str().to_owned(),
+                row: p.row,
+                col: p.col,
+                kind: kind_to_file(p.kind),
+            })
+            .collect(),
+    }
+}
+
+fn entry_from_file(entry: FileCatalogEntry, limits: &Limits) -> Result<CatalogEntry, LoadError> {
+    let model = strict_model_text(&entry.model)?;
+    if model.is_empty() {
+        return Err(LoadError::InvalidModelText {
+            text: entry.model,
+            reason: "the model must not be empty".into(),
+        });
+    }
+    Ok(CatalogEntry {
+        id: ModelId(entry.id),
+        manufacturer: strict_model_text(&entry.manufacturer)?,
+        model,
+        height_u: entry.height_u,
+        color: Rgb::from_hex(&entry.color).ok_or(LoadError::InvalidColor(entry.color))?,
+        ports: entry
+            .ports
+            .into_iter()
+            .map(|p| {
+                Ok(ModelPort {
+                    name: strict_name(&p.name, limits)?,
+                    row: p.row,
+                    col: p.col,
+                    kind: kind_from_file(p.kind),
+                })
+            })
+            .collect::<Result<Vec<_>, LoadError>>()?,
+    })
+}
+
+/// Like `ModelText::parse`, but rejects text that would need trimming.
+fn strict_model_text(raw: &str) -> Result<ModelText, LoadError> {
+    let invalid = |reason: String| LoadError::InvalidModelText {
+        text: raw.to_owned(),
+        reason,
+    };
+    let text = ModelText::parse(raw).map_err(|e| invalid(e.to_string()))?;
+    if text.as_str() != raw {
+        return Err(invalid("has leading or trailing whitespace".into()));
+    }
+    Ok(text)
+}
+
+fn kind_to_file(kind: PortKind) -> FilePortKind {
+    match kind {
+        PortKind::Unspecified => FilePortKind::Unspecified,
+        PortKind::Bnc => FilePortKind::Bnc,
+        PortKind::Sma => FilePortKind::Sma,
+        PortKind::NType => FilePortKind::NType,
+        PortKind::Banana => FilePortKind::Banana,
+        PortKind::Usb => FilePortKind::Usb,
+        PortKind::Lan => FilePortKind::Lan,
+        PortKind::Gpib => FilePortKind::Gpib,
+        PortKind::DSub => FilePortKind::DSub,
+        PortKind::Power => FilePortKind::Power,
+        PortKind::Other => FilePortKind::Other,
+    }
+}
+
+fn kind_from_file(kind: FilePortKind) -> PortKind {
+    match kind {
+        FilePortKind::Unspecified => PortKind::Unspecified,
+        FilePortKind::Bnc => PortKind::Bnc,
+        FilePortKind::Sma => PortKind::Sma,
+        FilePortKind::NType => PortKind::NType,
+        FilePortKind::Banana => PortKind::Banana,
+        FilePortKind::Usb => PortKind::Usb,
+        FilePortKind::Lan => PortKind::Lan,
+        FilePortKind::Gpib => PortKind::Gpib,
+        FilePortKind::DSub => PortKind::DSub,
+        FilePortKind::Power => PortKind::Power,
+        FilePortKind::Other => PortKind::Other,
+    }
 }
 
 fn cable_from_file(cable: FileCable, limits: &Limits) -> Result<Cable, LoadError> {
@@ -263,6 +386,7 @@ fn device_from_file(device: FileDevice, limits: &Limits) -> Result<Device, LoadE
         color: Rgb::from_hex(&device.color).ok_or(LoadError::InvalidColor(device.color))?,
         kind: match device.kind {
             FileDeviceKind::AdHoc => DeviceKind::AdHoc,
+            FileDeviceKind::Model(id) => DeviceKind::Model(ModelId(id)),
         },
         ports: device
             .ports
@@ -278,19 +402,7 @@ fn port_from_file(port: FilePort, limits: &Limits) -> Result<Port, LoadError> {
         name: strict_name(&port.name, limits)?,
         row: port.row,
         col: port.col,
-        kind: match port.kind {
-            FilePortKind::Unspecified => PortKind::Unspecified,
-            FilePortKind::Bnc => PortKind::Bnc,
-            FilePortKind::Sma => PortKind::Sma,
-            FilePortKind::NType => PortKind::NType,
-            FilePortKind::Banana => PortKind::Banana,
-            FilePortKind::Usb => PortKind::Usb,
-            FilePortKind::Lan => PortKind::Lan,
-            FilePortKind::Gpib => PortKind::Gpib,
-            FilePortKind::DSub => PortKind::DSub,
-            FilePortKind::Power => PortKind::Power,
-            FilePortKind::Other => PortKind::Other,
-        },
+        kind: kind_from_file(port.kind),
     })
 }
 

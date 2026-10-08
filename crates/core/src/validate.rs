@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::ids::PortId;
 use crate::limits::Limits;
-use crate::model::{Cable, Device, Document, Rack};
+use crate::model::{Cable, CatalogEntry, Device, DeviceKind, Document, Rack};
 use crate::name::Name;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -49,6 +49,12 @@ pub enum ValidationError {
     CableEndMissing { cable: String },
     #[error("Cable '{cable}': both ends are the same port")]
     CableEndsEqual { cable: String },
+    #[error("The model '{0}' is in the catalogue more than once")]
+    DuplicateModel(String),
+    #[error("Model '{model}': {reason}")]
+    InvalidModel { model: String, reason: String },
+    #[error("Device '{device}' was placed from a model that is not in the catalogue")]
+    DeviceModelMissing { device: String },
     #[error("Device '{device}': port '{port}' has two cables, '{a}' and '{b}'")]
     PortHasTwoCables {
         device: String,
@@ -66,7 +72,8 @@ pub fn validate(doc: &Document, limits: &Limits) -> Result<(), ValidationError> 
     for rack in &doc.racks {
         check_rack(rack, limits)?;
     }
-    check_cables(doc)
+    check_cables(doc)?;
+    check_catalog(doc, limits)
 }
 
 fn check_unique_ids(doc: &Document) -> Result<(), ValidationError> {
@@ -89,6 +96,9 @@ fn check_unique_ids(doc: &Document) -> Result<(), ValidationError> {
     }
     for cable in &doc.cables {
         insert(cable.id.0)?;
+    }
+    for entry in &doc.catalog {
+        insert(entry.id.0)?;
     }
     Ok(())
 }
@@ -203,6 +213,56 @@ fn check_cables(doc: &Document) -> Result<(), ValidationError> {
                     b: cable_name,
                 });
             }
+        }
+    }
+    Ok(())
+}
+
+fn check_catalog(doc: &Document, limits: &Limits) -> Result<(), ValidationError> {
+    let mut seen = HashSet::new();
+    for entry in &doc.catalog {
+        if !seen.insert(entry.key()) {
+            return Err(ValidationError::DuplicateModel(entry.display_name()));
+        }
+        check_entry(entry, limits).map_err(|reason| ValidationError::InvalidModel {
+            model: entry.display_name(),
+            reason,
+        })?;
+    }
+    for device in doc.racks.iter().flat_map(|r| &r.devices) {
+        if let DeviceKind::Model(id) = device.kind
+            && doc.model(id).is_none()
+        {
+            return Err(ValidationError::DeviceModelMissing {
+                device: device.name.to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The device rules, applied to an entry's contents.
+fn check_entry(entry: &CatalogEntry, limits: &Limits) -> Result<(), String> {
+    if entry.model.is_empty() {
+        return Err("the model must not be empty".into());
+    }
+    if entry.height_u == 0 || entry.height_u > limits.max_rack_height_u {
+        return Err(format!(
+            "the height must be between 1U and {}U",
+            limits.max_rack_height_u
+        ));
+    }
+    if let Some(name) = first_duplicate(entry.ports.iter().map(|p| &p.name)) {
+        return Err(format!("the port name '{name}' is used more than once"));
+    }
+    let rows = u64::from(entry.height_u) * u64::from(limits.port_rows_per_u);
+    let mut cells = HashMap::new();
+    for port in &entry.ports {
+        if u64::from(port.row) >= rows || port.col >= limits.port_cols {
+            return Err(format!("port '{}' is outside the device face", port.name));
+        }
+        if let Some(other) = cells.insert((port.row, port.col), &port.name) {
+            return Err(format!("ports '{other}' and '{}' share a cell", port.name));
         }
     }
     Ok(())

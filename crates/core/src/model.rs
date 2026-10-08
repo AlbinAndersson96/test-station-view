@@ -1,8 +1,8 @@
 use std::cmp::Reverse;
 
-use crate::ids::{CableId, DeviceId, PortId, RackId};
+use crate::ids::{CableId, DeviceId, ModelId, PortId, RackId};
 use crate::limits::Limits;
-use crate::name::{DocumentName, Name};
+use crate::name::{DocumentName, ModelText, Name};
 
 pub const DEFAULT_RACK_HEIGHT_U: u32 = 42;
 pub const DEFAULT_DOCUMENT_NAME: &str = "Station1";
@@ -46,11 +46,55 @@ impl Rgb {
     }
 }
 
-/// Reserved for a future equipment catalog.
+/// Where a device came from: entered by hand, or placed from a catalogue entry (whose
+/// contents were copied into it; the link is informational).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DeviceKind {
     #[default]
     AdHoc,
+    Model(ModelId),
+}
+
+/// A port of a catalogue entry: copied, with a new ID, into each placed device.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelPort {
+    pub name: Name,
+    pub row: u32,
+    pub col: u32,
+    pub kind: PortKind,
+}
+
+/// A model in the document's equipment catalogue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogEntry {
+    pub id: ModelId,
+    /// May be empty.
+    pub manufacturer: ModelText,
+    /// Never empty.
+    pub model: ModelText,
+    pub height_u: u32,
+    pub color: Rgb,
+    pub ports: Vec<ModelPort>,
+}
+
+impl CatalogEntry {
+    /// "Manufacturer Model", or the model alone without a manufacturer.
+    pub fn display_name(&self) -> String {
+        display_name(&self.manufacturer, &self.model)
+    }
+
+    /// The identity compared for uniqueness (case-insensitive).
+    pub fn key(&self) -> String {
+        self.display_name().to_lowercase()
+    }
+}
+
+pub fn display_name(manufacturer: &ModelText, model: &ModelText) -> String {
+    if manufacturer.is_empty() {
+        model.to_string()
+    } else {
+        format!("{manufacturer} {model}")
+    }
 }
 
 /// A port's connector type.
@@ -211,6 +255,7 @@ pub struct Document {
     pub name: DocumentName,
     pub racks: Vec<Rack>,
     pub cables: Vec<Cable>,
+    pub catalog: Vec<CatalogEntry>,
 }
 
 impl Document {
@@ -224,6 +269,7 @@ impl Document {
                 devices: Vec::new(),
             }],
             cables: Vec::new(),
+            catalog: Vec::new(),
         }
     }
 
@@ -242,6 +288,10 @@ impl Document {
         let rack = &self.racks[ri];
         let device = &rack.devices[di];
         Some((rack, device, &device.ports[pi]))
+    }
+
+    pub fn model(&self, id: ModelId) -> Option<&CatalogEntry> {
+        self.catalog.iter().find(|e| e.id == id)
     }
 
     pub fn cable(&self, id: CableId) -> Option<&Cable> {

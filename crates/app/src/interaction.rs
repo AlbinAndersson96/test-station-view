@@ -8,7 +8,7 @@ use tsv_core::edit::{
     DeviceSource, ObjectId, Plan, PortSource, plan_connect, plan_device_drop, plan_port_drop,
     plan_remove_cable, plan_remove_device, plan_remove_port, plan_replug,
 };
-use tsv_core::ids::{CableId, DeviceId, PortId};
+use tsv_core::ids::{CableId, DeviceId, ModelId, PortId};
 use tsv_core::model::{PortKind, Rgb};
 use tsv_core::name::Name;
 use tsv_core::port_grid::Cell;
@@ -36,6 +36,8 @@ pub enum DragSource {
         height_u: u32,
     },
     Device(DeviceId),
+    /// A new device from a catalogue entry (the Catalogue panel's handle).
+    Model(ModelId),
     NewPort {
         device: DeviceId,
         name: Name,
@@ -325,6 +327,7 @@ impl Session {
             DragSource::Port { port, .. } => plan_remove_port(doc, *port),
             DragSource::CableEnd { cable, .. } => plan_remove_cable(doc, *cable),
             DragSource::NewDevice { .. }
+            | DragSource::Model(_)
             | DragSource::NewPort { .. }
             | DragSource::Cable { .. } => return,
         };
@@ -357,7 +360,7 @@ impl Session {
         let doc = self.document();
         let limits = &self.limits;
         match source {
-            DragSource::NewDevice { .. } | DragSource::Device(_) => {
+            DragSource::NewDevice { .. } | DragSource::Device(_) | DragSource::Model(_) => {
                 let (core_source, height_u, color) = match source {
                     DragSource::NewDevice { name, height_u } => (
                         DeviceSource::New {
@@ -372,6 +375,12 @@ impl Session {
                             return;
                         };
                         (DeviceSource::Existing(*d), device.height_u, device.color)
+                    }
+                    DragSource::Model(m) => {
+                        let Some(entry) = doc.model(*m) else {
+                            return;
+                        };
+                        (DeviceSource::Model(*m), entry.height_u, entry.color)
                     }
                     _ => unreachable!(),
                 };

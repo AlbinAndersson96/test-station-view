@@ -72,7 +72,13 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
                 rows.push(Row {
                     target: RenameTarget::Object(device_id),
                     label: device.name.to_string(),
-                    detail: format!("U{}", device.bottom_u),
+                    detail: match device.kind {
+                        tsv_core::model::DeviceKind::Model(m) => doc.model(m).map_or_else(
+                            || format!("U{}", device.bottom_u),
+                            |e| format!("U{} · {}", device.bottom_u, e.model),
+                        ),
+                        tsv_core::model::DeviceKind::AdHoc => format!("U{}", device.bottom_u),
+                    },
                     depth: 2,
                     rack_index: None,
                     expander: (!device.ports.is_empty()).then_some(device_open),

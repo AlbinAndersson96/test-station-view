@@ -1,6 +1,7 @@
 use crate::edit::cable::drop_dangling_cables;
+use crate::edit::catalog::device_from_model;
 use crate::edit::{ObjectId, Plan, Rejection};
-use crate::ids::{DeviceId, RackId};
+use crate::ids::{DeviceId, ModelId, RackId};
 use crate::limits::Limits;
 use crate::model::{Device, DeviceKind, Document, Rgb};
 use crate::name::{Name, auto_rename};
@@ -8,8 +9,13 @@ use crate::placement::{self, Occupant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceSource {
-    New { name: Name, height_u: u32 },
+    New {
+        name: Name,
+        height_u: u32,
+    },
     Existing(DeviceId),
+    /// A new device with the contents of a catalogue entry.
+    Model(ModelId),
 }
 
 /// Places a new or existing device with its bottom at `bottom_u` (clamped into the rack),
@@ -40,6 +46,10 @@ pub fn plan_device_drop(
         DeviceSource::Existing(id) => {
             let (ri, di) = document.device_location(*id).ok_or(Rejection::NotFound)?;
             document.racks[ri].devices.remove(di)
+        }
+        DeviceSource::Model(id) => {
+            let entry = doc.model(*id).ok_or(Rejection::NotFound)?;
+            device_from_model(entry, limits)
         }
     };
 

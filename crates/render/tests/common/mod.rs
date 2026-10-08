@@ -54,6 +54,7 @@ pub fn doc(racks: Vec<Rack>) -> Document {
         name: DocumentName::parse("Test").unwrap(),
         racks,
         cables: Vec::new(),
+        catalog: Vec::new(),
     }
 }
 

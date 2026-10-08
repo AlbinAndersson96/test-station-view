@@ -2,12 +2,14 @@
 //! without touching its input; a `Rejection` means nothing changes.
 
 mod cable;
+mod catalog;
 mod device;
 mod document;
 mod port;
 mod rack;
 
 pub use cable::*;
+pub use catalog::*;
 pub use device::*;
 pub use document::*;
 pub use port::*;
@@ -63,6 +65,12 @@ pub enum Rejection {
     SamePort,
     #[error("port '{0}' already has a cable")]
     PortInUse(String),
+    #[error("the model '{0}' is already in the catalogue")]
+    ModelTaken(String),
+    #[error("the model must not be empty")]
+    ModelRequired,
+    #[error("the device was not placed from a catalogue model")]
+    NotLinked,
 }
 
 impl From<PlacementError> for Rejection {

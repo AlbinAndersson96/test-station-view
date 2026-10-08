@@ -4,13 +4,14 @@
 use glam::{Vec2, Vec3};
 use tsv_core::edit::{
     ObjectId, Plan, Rejection, plan_add_rack, plan_move_rack, plan_new_document, plan_remove_cable,
-    plan_remove_device, plan_remove_port, plan_remove_rack, plan_rename_cable, plan_rename_device,
-    plan_rename_document, plan_rename_port, plan_rename_rack, plan_set_cable_color,
-    plan_set_device_color, plan_set_device_height, plan_set_port_kind, plan_set_rack_height,
+    plan_remove_device, plan_remove_model, plan_remove_port, plan_remove_rack, plan_rename_cable,
+    plan_rename_device, plan_rename_document, plan_rename_model, plan_rename_port,
+    plan_rename_rack, plan_save_model, plan_set_cable_color, plan_set_device_color,
+    plan_set_device_height, plan_set_port_kind, plan_set_rack_height, plan_update_model,
 };
 use tsv_core::editor::Editor;
 use tsv_core::file_format::{from_json, to_json};
-use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
+use tsv_core::ids::{CableId, DeviceId, ModelId, PortId, RackId};
 use tsv_core::limits::Limits;
 use tsv_core::model::{Document, PortKind, Rgb};
 use tsv_render::camera::OrbitCamera;
@@ -19,7 +20,9 @@ use tsv_render::pick::Ray;
 use tsv_render::scene::{CablePreview, Ghost, Scene, SceneInput, animation_targets, build_scene};
 use tsv_render::view::ViewState;
 
-use crate::forms::{capitalise, export_file_name, parse_document_name, parse_height, parse_name};
+use crate::forms::{
+    capitalise, export_file_name, parse_document_name, parse_height, parse_model_text, parse_name,
+};
 use crate::interaction::Mode;
 
 /// What `request_delete` decided.
@@ -250,6 +253,42 @@ impl Session {
 
     pub fn set_device_color(&mut self, device: DeviceId, color: Rgb) {
         let result = plan_set_device_color(self.editor.document(), device, color);
+        let _ = self.apply(result);
+    }
+
+    /// "Save as model": a catalogue entry from the device, which becomes linked to it.
+    pub fn save_model(
+        &mut self,
+        device: DeviceId,
+        manufacturer: &str,
+        model: &str,
+    ) -> Result<(), String> {
+        let manufacturer = parse_model_text(manufacturer)?;
+        let model = parse_model_text(model)?;
+        let result = plan_save_model(self.editor.document(), device, manufacturer, model);
+        self.apply(result)
+    }
+
+    /// "Update model from this device".
+    pub fn update_model(&mut self, device: DeviceId) -> Result<(), String> {
+        let result = plan_update_model(self.editor.document(), device);
+        self.apply(result)
+    }
+
+    pub fn rename_model(
+        &mut self,
+        id: ModelId,
+        manufacturer: &str,
+        model: &str,
+    ) -> Result<(), String> {
+        let manufacturer = parse_model_text(manufacturer)?;
+        let model = parse_model_text(model)?;
+        let result = plan_rename_model(self.editor.document(), id, manufacturer, model);
+        self.apply(result)
+    }
+
+    pub fn remove_model(&mut self, id: ModelId) {
+        let result = plan_remove_model(self.editor.document(), id);
         let _ = self.apply(result);
     }
 
