@@ -28,3 +28,4 @@ id_type!(RackId);
 id_type!(DeviceId);
 id_type!(PortId);
 id_type!(CableId);
+id_type!(ModelId);

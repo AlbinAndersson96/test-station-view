@@ -176,7 +176,7 @@ pub fn animation_targets(doc: &Document, limits: &Limits) -> Vec<(ObjectId, Vec3
                 };
                 targets.push((
                     ObjectId::Port(port.id),
-                    port_marker_box(ri, device, cell, port.kind, limits).min,
+                    port_marker_box(ri, device, cell, port.kind, port.gender, limits).min,
                 ));
             }
         }
@@ -299,7 +299,8 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
                     row: port.row,
                     col: port.col,
                 };
-                let resting = port_marker_box(ri, device, cell, port.kind, input.limits);
+                let resting =
+                    port_marker_box(ri, device, cell, port.kind, port.gender, input.limits);
                 let offset = motion.offset(pid, resting.min);
                 let aabb = resting.translated(offset);
                 let color = rgba(port_color(port.kind).unwrap_or(marker_color), 1.0);

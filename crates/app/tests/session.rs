@@ -216,3 +216,23 @@ fn a_port_type_change_is_one_undo_step() {
         PortKind::Unspecified
     );
 }
+
+#[test]
+fn a_port_gender_change_is_one_undo_step() {
+    use tsv_core::model::Gender;
+    let p = port("CH1", 0, 0);
+    let pid = p.id;
+    let mut s = session(doc(vec![rack(
+        "R",
+        42,
+        vec![with_ports(device("D", 1, 1), vec![p])],
+    )]));
+    s.set_port_gender(pid, Gender::Male);
+    assert_eq!(s.document().port(pid).unwrap().2.gender, Gender::Male);
+    assert_eq!(s.revision(), 1);
+    s.undo();
+    assert_eq!(
+        s.document().port(pid).unwrap().2.gender,
+        Gender::Unspecified
+    );
+}

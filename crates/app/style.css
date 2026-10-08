@@ -79,3 +79,10 @@ input[type="color"] { padding: 0; height: 28px; }
 .modal h2 { margin: 0 0 8px; font-size: 16px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .expander { border: none; background: none; padding: 0 4px 0 0; width: 16px; color: var(--muted); }
+
+.subheading { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.hint { color: var(--muted); font-size: 12px; }
+.catalog-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+.catalog-row .grip { cursor: grab; color: var(--accent); user-select: none; touch-action: none; padding: 0 2px; }
+.catalog-name { flex: 1; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-editor { margin: 2px 0 8px 16px; }

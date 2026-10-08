@@ -1,6 +1,6 @@
 mod common;
 
-use tsv_core::model::PortKind;
+use tsv_core::model::{Gender, PortKind};
 
 use common::*;
 use glam::Vec3;
@@ -58,6 +58,7 @@ fn picks_the_nearest_object() {
         dev,
         Cell { row: 0, col: 0 },
         PortKind::Unspecified,
+        Gender::Unspecified,
         &limits(),
     )
     .center();

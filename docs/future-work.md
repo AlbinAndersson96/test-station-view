@@ -12,18 +12,19 @@ needs its own design (spec, then plan) before implementation.
 
 ### Equipment catalogue
 
-Users would pick a device **type** (for example "Keysight 34465A DMM, 2U") from a catalogue
-instead of entering the height by hand. Each placed instance keeps its own name.
+**Done.** See `docs/superpowers/specs/2026-10-08-equipment-catalogue-design.md`.
 
-- **Extension point:** `DeviceKind` in `crates/core/src/model.rs` currently has only `AdHoc`.
-  A catalogue would add a variant that refers to a catalogue entry (for example by ID).
-- **File format:** the `kind` field is already written to JSON and defaults to `ad_hoc` when it
-  is missing, so new variants can be added with a format-version bump and a migration step (see
-  [File format changes](#file-format-changes)).
-- **Open questions:**
-  - Is the catalogue built in, editable by the team, or stored with each document or
-    separately?
-  - Does a type also define default ports, colour or a front-panel image?
+- **What exists:**
+  - Each document carries a catalogue of models (manufacturer, model, height, colour and
+    default ports).
+  - "Save as model" makes an entry from a device. Dragging an entry into a rack places a copy
+    linked to its model (`DeviceKind::Model`).
+  - Changing an entry never changes devices already placed.
+- **Still open:**
+  - front-panel images;
+  - a catalogue shared across documents (via the backend);
+  - live links that push entry changes into placed devices;
+  - a dedicated port-layout editor for entries.
 
 ### Connector types for ports
 
@@ -37,8 +38,10 @@ marker shape and colour. A cable between two different specific types is allowed
   - `layout::marker_shape` and `scene::port_color`.
 - **Still open:**
   - user-defined types;
-  - gender (male/female);
   - an explicit adapter object instead of the mismatch warning.
+- **Gender:** done (male, female or other/genderless; see
+  `docs/superpowers/specs/2026-10-08-connector-gender-design.md`). It is shown by the marker's
+  depth and never restricts cables.
 
 ### Cables between ports
 

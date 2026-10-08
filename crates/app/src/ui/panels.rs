@@ -2,8 +2,8 @@
 
 use leptos::prelude::*;
 use tsv_core::edit::ObjectId;
-use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
-use tsv_core::model::{Document, PortKind};
+use tsv_core::ids::{CableId, DeviceId, ModelId, PortId, RackId};
+use tsv_core::model::{DeviceKind, Document, Gender, PortKind};
 
 use crate::forms::{
     color_from_input, color_to_input, new_device_input, new_port_input, parse_document_name,
@@ -30,11 +30,14 @@ enum Selected {
         height: u32,
         color: String,
         position: String,
+        /// The linked catalogue entry: its display name, manufacturer and model.
+        model: Option<(String, String, String)>,
     },
     Port {
         id: PortId,
         name: String,
         kind: PortKind,
+        gender: Gender,
         /// The cable plugged into the port: its ID and name.
         cable: Option<(CableId, String)>,
     },
@@ -75,11 +78,22 @@ fn selected() -> Selected {
                 } else {
                     format!("U{}–U{}", d.bottom_u, d.top_u())
                 },
+                model: match d.kind {
+                    DeviceKind::Model(m) => doc.model(m).map(|e| {
+                        (
+                            e.display_name(),
+                            e.manufacturer.to_string(),
+                            e.model.to_string(),
+                        )
+                    }),
+                    DeviceKind::AdHoc => None,
+                },
             }),
             Some(ObjectId::Port(id)) => doc.port(id).map(|(_, _, p)| Selected::Port {
                 id,
                 name: p.name.to_string(),
                 kind: p.kind,
+                gender: p.gender,
                 cable: doc.cable_at_port(id).map(|c| (c.id, c.name.to_string())),
             }),
             Some(ObjectId::Cable(id)) => doc.cable(id).map(|c| Selected::Cable {
@@ -121,7 +135,7 @@ pub fn Properties() -> impl IntoView {
                             commit=move |v: String| update(|s| s.set_rack_height(id, &v)) />
                     }
                         .into_any(),
-                    Selected::Device { id, name, height, color, position } => view! {
+                    Selected::Device { id, name, height, color, position, model } => view! {
                         <Field label="Name" value=name check=check_name focus_for=ObjectId::Device(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Device(id), &v)) />
                         <Field label="Height (U)" value=height.to_string() check=check_height
@@ -139,12 +153,14 @@ pub fn Properties() -> impl IntoView {
                             />
                         </label>
                         <div class="field"><span>"Position"</span><span>{position}</span></div>
+                        <SaveAsModel device=id model=model />
                     }
                         .into_any(),
-                    Selected::Port { id, name, kind, cable } => view! {
+                    Selected::Port { id, name, kind, gender, cable } => view! {
                         <Field label="Name" value=name check=check_name focus_for=ObjectId::Port(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Port(id), &v)) />
                         <KindSelect value=kind on_change=move |k| update(|s| s.set_port_kind(id, k)) />
+                        <GenderSelect value=gender on_change=move |g| update(|s| s.set_port_gender(id, g)) />
                         {
                             let (source, hint) = match &cable {
                                 Some((cable, _)) => (DragSource::CableEnd { cable: *cable, end: id }, "⠿ Drag to re-plug"),
@@ -199,6 +215,184 @@ pub fn Properties() -> impl IntoView {
                 }
             }}
         </section>
+    }
+}
+
+/// The device's model link, "Update model from this device" and "Save as model".
+#[component]
+fn SaveAsModel(device: DeviceId, model: Option<(String, String, String)>) -> impl IntoView {
+    let (manufacturer, model_text) = model
+        .as_ref()
+        .map_or((String::new(), String::new()), |(_, m, t)| {
+            (m.clone(), t.clone())
+        });
+    let manufacturer = RwSignal::new(manufacturer);
+    let model_text = RwSignal::new(model_text);
+    let error = RwSignal::new(None::<String>);
+    let linked = model.map(|(display, _, _)| {
+        view! {
+            <div class="field"><span>"Model"</span><span>{display}</span></div>
+            <button on:click=move |_| {
+                error.set(update(|s| s.update_model(device)).err());
+            }>"Update model from this device"</button>
+        }
+    });
+    view! {
+        {linked}
+        <h3 class="subheading">"Save as model"</h3>
+        <label class="field">
+            <span>"Manufacturer"</span>
+            <input prop:value=move || manufacturer.get() on:input=move |ev| manufacturer.set(event_target_value(&ev)) />
+        </label>
+        <label class="field">
+            <span>"Model"</span>
+            <input prop:value=move || model_text.get() on:input=move |ev| model_text.set(event_target_value(&ev)) />
+        </label>
+        {move || error.get().map(|e| view! { <div class="field-error">{e}</div> })}
+        <button on:click=move |_| {
+            let (m, t) = (manufacturer.get_untracked(), model_text.get_untracked());
+            error.set(update(|s| s.save_model(device, &m, &t)).err());
+        }>"Save"</button>
+    }
+}
+
+/// The equipment catalogue: drag a model into a rack; click it to rename or delete it.
+#[component]
+pub fn CatalogPanel() -> impl IntoView {
+    let sig = signals();
+    let open = RwSignal::new(None::<ModelId>);
+    let entries = move || {
+        sig.rev.track();
+        read(|s| {
+            let mut v: Vec<(ModelId, String, String, String, String)> = s
+                .document()
+                .catalog
+                .iter()
+                .map(|e| {
+                    let ports = match e.ports.len() {
+                        1 => "1 port".to_string(),
+                        n => format!("{n} ports"),
+                    };
+                    (
+                        e.id,
+                        e.display_name(),
+                        format!("{}U · {ports}", e.height_u),
+                        e.manufacturer.to_string(),
+                        e.model.to_string(),
+                    )
+                })
+                .collect();
+            v.sort_by_key(|(_, name, ..)| name.to_lowercase());
+            v
+        })
+    };
+    view! {
+        <section class="panel">
+            <h2>"Catalogue"</h2>
+            {move || {
+                let entries = entries();
+                if entries.is_empty() {
+                    return view! { <div class="hint">"Select a device and use Save as model"</div> }.into_any();
+                }
+                entries
+                    .into_iter()
+                    .map(|(id, display, detail, manufacturer, model)| {
+                        let editing = move || open.get() == Some(id);
+                        view! {
+                            <div class="catalog-row">
+                                <span
+                                    class="grip"
+                                    title="Drag into a rack"
+                                    on:pointerdown=move |ev| handle_down(&ev, Some(DragSource::Model(id)))
+                                    on:pointermove=move |ev| forward_move(&ev)
+                                    on:pointerup=move |ev| forward_up(&ev)
+                                    on:pointercancel=move |_| forward_cancel()
+                                    on:lostpointercapture=move |_| forward_cancel()
+                                >
+                                    "⠿"
+                                </span>
+                                <span
+                                    class="catalog-name"
+                                    on:click=move |_| open.update(|o| *o = if *o == Some(id) { None } else { Some(id) })
+                                >
+                                    {display}
+                                </span>
+                                <span class="tree-detail">{detail}</span>
+                            </div>
+                            {move || editing().then(|| view! {
+                                <ModelEditor id=id manufacturer=manufacturer.clone() model=model.clone() />
+                            })}
+                        }
+                    })
+                    .collect_view()
+                    .into_any()
+            }}
+        </section>
+    }
+}
+
+/// Manufacturer and model fields (commit on Enter or blur) and Delete, for one entry.
+#[component]
+fn ModelEditor(id: ModelId, manufacturer: String, model: String) -> impl IntoView {
+    let stored = StoredValue::new((manufacturer.clone(), model.clone()));
+    let manufacturer = RwSignal::new(manufacturer);
+    let model = RwSignal::new(model);
+    let error = RwSignal::new(None::<String>);
+    let commit = move || {
+        let (m, t) = (manufacturer.get_untracked(), model.get_untracked());
+        // Unchanged fields must not create an empty undo step.
+        if stored.with_value(|(sm, st)| (sm, st) == (&m, &t)) {
+            return;
+        }
+        error.set(update(|s| s.rename_model(id, &m, &t)).err());
+    };
+    let input = move |label: &'static str, value: RwSignal<String>| {
+        view! {
+            <label class="field">
+                <span>{label}</span>
+                <input
+                    prop:value=move || value.get()
+                    on:input=move |ev| value.set(event_target_value(&ev))
+                    on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                        if ev.key() == "Enter" {
+                            commit();
+                        }
+                    }
+                    on:blur=move |_| commit()
+                />
+            </label>
+        }
+    };
+    view! {
+        <div class="catalog-editor">
+            {input("Manufacturer", manufacturer)}
+            {input("Model", model)}
+            {move || error.get().map(|e| view! { <div class="field-error">{e}</div> })}
+            <button class="danger" on:click=move |_| update(|s| s.remove_model(id))>"Delete model"</button>
+        </div>
+    }
+}
+
+/// A connector-gender dropdown.
+#[component]
+fn GenderSelect(value: Gender, on_change: impl Fn(Gender) + 'static) -> impl IntoView {
+    view! {
+        <label class="field">
+            <span>"Gender"</span>
+            <select
+                prop:value=value.key()
+                on:change=move |ev| {
+                    if let Some(g) = Gender::from_key(&event_target_value(&ev)) {
+                        on_change(g);
+                    }
+                }
+            >
+                {Gender::ALL
+                    .iter()
+                    .map(|g| view! { <option value=g.key() selected=*g == value>{g.label()}</option> })
+                    .collect_view()}
+            </select>
+        </label>
     }
 }
 
@@ -359,6 +553,7 @@ pub fn NewPortForm() -> impl IntoView {
     let sig = signals();
     let name = RwSignal::new(String::new());
     let kind = RwSignal::new(PortKind::Unspecified);
+    let gender = RwSignal::new(Gender::Unspecified);
     let device = move || {
         sig.rev.track();
         read(|s| {
@@ -389,6 +584,7 @@ pub fn NewPortForm() -> impl IntoView {
                 />
             </label>
             <KindSelect value=PortKind::Unspecified on_change=move |k| kind.set(k) />
+            <GenderSelect value=Gender::Unspecified on_change=move |g| gender.set(g) />
             {move || (!name.get().is_empty()).then(|| checked().err()).flatten()
                 .map(|e| view! { <div class="field-error">{e}</div> })}
             <div
@@ -399,6 +595,7 @@ pub fn NewPortForm() -> impl IntoView {
                         device,
                         name,
                         kind: kind.get_untracked(),
+                        gender: gender.get_untracked(),
                     });
                     handle_down(&ev, source);
                 }

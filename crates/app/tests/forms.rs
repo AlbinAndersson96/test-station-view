@@ -18,6 +18,7 @@ fn port(n: &str, row: u32, col: u32) -> Port {
         row,
         col,
         kind: PortKind::default(),
+        gender: Default::default(),
     }
 }
 
@@ -52,6 +53,7 @@ fn doc(racks: Vec<Rack>) -> Document {
         name: DocumentName::parse("Test").unwrap(),
         racks,
         cables: Vec::new(),
+        catalog: Vec::new(),
     }
 }
 use tsv_app::forms::*;

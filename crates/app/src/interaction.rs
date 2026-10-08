@@ -8,8 +8,8 @@ use tsv_core::edit::{
     DeviceSource, ObjectId, Plan, PortSource, plan_connect, plan_device_drop, plan_port_drop,
     plan_remove_cable, plan_remove_device, plan_remove_port, plan_replug,
 };
-use tsv_core::ids::{CableId, DeviceId, PortId};
-use tsv_core::model::{PortKind, Rgb};
+use tsv_core::ids::{CableId, DeviceId, ModelId, PortId};
+use tsv_core::model::{Gender, PortKind, Rgb};
 use tsv_core::name::Name;
 use tsv_core::port_grid::Cell;
 use tsv_render::layout::{device_face, object_bounds, port_anchor, port_marker_box, units_box};
@@ -36,10 +36,13 @@ pub enum DragSource {
         height_u: u32,
     },
     Device(DeviceId),
+    /// A new device from a catalogue entry (the Catalogue panel's handle).
+    Model(ModelId),
     NewPort {
         device: DeviceId,
         name: Name,
         kind: PortKind,
+        gender: Gender,
     },
     Port {
         device: DeviceId,
@@ -325,6 +328,7 @@ impl Session {
             DragSource::Port { port, .. } => plan_remove_port(doc, *port),
             DragSource::CableEnd { cable, .. } => plan_remove_cable(doc, *cable),
             DragSource::NewDevice { .. }
+            | DragSource::Model(_)
             | DragSource::NewPort { .. }
             | DragSource::Cable { .. } => return,
         };
@@ -357,7 +361,7 @@ impl Session {
         let doc = self.document();
         let limits = &self.limits;
         match source {
-            DragSource::NewDevice { .. } | DragSource::Device(_) => {
+            DragSource::NewDevice { .. } | DragSource::Device(_) | DragSource::Model(_) => {
                 let (core_source, height_u, color) = match source {
                     DragSource::NewDevice { name, height_u } => (
                         DeviceSource::New {
@@ -372,6 +376,12 @@ impl Session {
                             return;
                         };
                         (DeviceSource::Existing(*d), device.height_u, device.color)
+                    }
+                    DragSource::Model(m) => {
+                        let Some(entry) = doc.model(*m) else {
+                            return;
+                        };
+                        (DeviceSource::Model(*m), entry.height_u, entry.color)
                     }
                     _ => unreachable!(),
                 };
@@ -412,19 +422,23 @@ impl Session {
                 unreachable!("handled above")
             }
             DragSource::NewPort { device, .. } | DragSource::Port { device, .. } => {
-                let (core_source, kind) = match source {
-                    DragSource::NewPort { name, kind, .. } => (
+                let (core_source, kind, gender) = match source {
+                    DragSource::NewPort {
+                        name, kind, gender, ..
+                    } => (
                         PortSource::New {
                             name: name.clone(),
                             kind: *kind,
+                            gender: *gender,
                         },
                         *kind,
+                        *gender,
                     ),
                     DragSource::Port { port, .. } => {
                         let Some((_, _, p)) = doc.port(*port) else {
                             return;
                         };
-                        (PortSource::Existing(*port), p.kind)
+                        (PortSource::Existing(*port), p.kind, p.gender)
                     }
                     _ => unreachable!(),
                 };
@@ -459,7 +473,7 @@ impl Session {
                             row: target.cell.row,
                             col: target.cell.col,
                         };
-                        let aabb = port_marker_box(ri, d, cell, kind, limits);
+                        let aabb = port_marker_box(ri, d, cell, kind, gender, limits);
                         self.ghost = Some(Ghost {
                             aabb,
                             color,

@@ -4,7 +4,7 @@
 use tsv_core::ids::DeviceId;
 use tsv_core::limits::Limits;
 use tsv_core::model::{Document, Rgb};
-use tsv_core::name::{DocumentName, Name};
+use tsv_core::name::{DocumentName, ModelText, Name};
 
 pub fn parse_name(text: &str, limits: &Limits) -> Result<Name, String> {
     Name::parse(text, limits).map_err(|e| capitalise(&e.to_string()))
@@ -12,6 +12,11 @@ pub fn parse_name(text: &str, limits: &Limits) -> Result<Name, String> {
 
 pub fn parse_document_name(text: &str) -> Result<DocumentName, String> {
     DocumentName::parse(text).map_err(|e| capitalise(&e.to_string()))
+}
+
+/// A catalogue manufacturer or model (emptiness is checked by the edit).
+pub fn parse_model_text(text: &str) -> Result<ModelText, String> {
+    ModelText::parse(text).map_err(|e| capitalise(&e.to_string()))
 }
 
 /// A height in whole rack units, at least 1.

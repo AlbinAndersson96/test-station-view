@@ -140,3 +140,47 @@ fn is_reserved_windows_name(name: &str) -> bool {
         && (upper.starts_with("COM") || upper.starts_with("LPT"))
         && (b'1'..=b'9').contains(&bytes[3])
 }
+
+pub const MODEL_TEXT_MAX_LEN: usize = 40;
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ModelTextError {
+    #[error("text must be at most {max} characters")]
+    TooLong { max: usize },
+    #[error("text must not contain control characters")]
+    ControlChar,
+}
+
+/// A catalogue entry's manufacturer or model: trimmed, inner spaces kept, at most
+/// `MODEL_TEXT_MAX_LEN` characters, no control characters. May be empty (callers decide).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct ModelText(String);
+
+impl ModelText {
+    pub fn parse(input: &str) -> Result<ModelText, ModelTextError> {
+        let trimmed = input.trim();
+        if trimmed.chars().any(char::is_control) {
+            return Err(ModelTextError::ControlChar);
+        }
+        if trimmed.chars().count() > MODEL_TEXT_MAX_LEN {
+            return Err(ModelTextError::TooLong {
+                max: MODEL_TEXT_MAX_LEN,
+            });
+        }
+        Ok(ModelText(trimmed.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl fmt::Display for ModelText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}

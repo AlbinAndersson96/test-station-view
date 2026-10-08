@@ -21,6 +21,7 @@ fn new(n: &str) -> PortSource {
     PortSource::New {
         name: name(n),
         kind: tsv_core::model::PortKind::Unspecified,
+        gender: Default::default(),
     }
 }
 
