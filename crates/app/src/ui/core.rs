@@ -19,6 +19,7 @@ use crate::storage::{LocalStorageStore, autosave};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Dialog {
     ConfirmNew,
+    ConfirmExample,
     ConfirmImport { text: String },
     ConfirmDeleteRack { rack: RackId, name: String },
     Error { message: String },

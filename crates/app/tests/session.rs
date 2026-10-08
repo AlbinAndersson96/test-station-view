@@ -236,3 +236,25 @@ fn a_port_gender_change_is_one_undo_step() {
         Gender::Unspecified
     );
 }
+
+#[test]
+fn the_example_can_be_loaded_and_undone() {
+    let mut s = session(doc(vec![rack("R", 42, vec![device("D", 1, 1)])]));
+    let before = s.document().clone();
+    s.load_example(0.0);
+    assert_eq!(s.document().name.as_str(), "Example Station");
+    assert_eq!(s.selection(), None);
+    assert_eq!(s.revision(), 1);
+    s.undo();
+    assert_eq!(s.document(), &before);
+}
+
+#[test]
+fn a_new_document_is_still_empty() {
+    let mut s = session(tsv_core::example::example_document(&limits()));
+    s.new_document(0.0);
+    let d = s.document();
+    assert_eq!(d.name.as_str(), "Station1");
+    assert_eq!(d.racks.len(), 1);
+    assert!(d.racks[0].devices.is_empty() && d.cables.is_empty() && d.catalog.is_empty());
+}
