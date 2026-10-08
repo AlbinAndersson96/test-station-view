@@ -218,3 +218,176 @@ fn framing_a_cable_fits_its_path() {
         );
     }
 }
+
+/// The station with cable "C1" from HI to OUT, coloured green.
+fn wired() -> (Document, [PortId; 4]) {
+    let (mut d, ids) = station();
+    let [hi, _, _, out] = ids;
+    let mut c = cable("C1", hi, out);
+    c.color = Rgb { r: 0, g: 160, b: 0 };
+    d.cables = vec![c];
+    (d, ids)
+}
+
+/// Shift-presses port `end` and moves just far enough to start a drag.
+fn pick_up(s: &mut Session, end: PortId) {
+    let start = port_px(s, end);
+    s.pointer_down_with_shift(start, Button::Left, true);
+    s.pointer_move(start + Vec2::new(5.0, 0.0), false, 0.0);
+}
+
+#[test]
+fn shift_dragging_a_connected_port_replugs_its_cable_end() {
+    let (d, [hi, lo, _, out]) = wired();
+    let original = d.cables[0].clone();
+    let mut s = session(d);
+    let to = port_px(&s, lo);
+    connect_drag(&mut s, out, to);
+    let c = &s.document().cables[0];
+    assert_eq!((c.id, c.a, c.b), (original.id, hi, lo));
+    assert_eq!((&c.name, c.color), (&original.name, original.color));
+    assert_eq!(s.selection(), Some(ObjectId::Cable(c.id)));
+    assert_eq!(s.document().cables.len(), 1);
+    s.undo();
+    assert_eq!(s.document().cables[0], original);
+}
+
+#[test]
+fn a_picked_up_end_follows_the_pointer_in_the_cable_colour() {
+    let (d, [hi, lo, sense, out]) = wired();
+    let id = d.cables[0].id;
+    let mut s = session(d);
+    pick_up(&mut s, out);
+    assert!(s.is_dragging(), "the trash zone is shown");
+
+    // Over empty space: the cable hangs from HI to the pointer.
+    s.pointer_move(Vec2::new(400.0, 590.0), false, 0.0);
+    let preview = s.cable_preview().expect("loose end");
+    assert!(preview.valid);
+    assert_eq!(
+        preview.from,
+        port_anchor(s.document(), &s.limits, hi).unwrap()
+    );
+    assert_eq!(preview.color, Rgb { r: 0, g: 160, b: 0 });
+    assert_eq!(
+        s.scene().tubes.len(),
+        CABLE_SEGMENTS,
+        "only the preview is drawn"
+    );
+
+    // Over a free port: the re-plugged cable.
+    s.pointer_move(port_px(&s, sense), false, 0.0);
+    assert_eq!(s.cable_preview(), None);
+    assert_eq!(
+        s.shown_document().cable(id).map(|c| (c.a, c.b)),
+        Some((hi, sense))
+    );
+    assert_eq!(s.hovered_port(), Some(sense));
+    assert_eq!(s.scene().tubes.len(), CABLE_SEGMENTS);
+
+    // Over its other end: red.
+    s.pointer_move(port_px(&s, hi), false, 0.0);
+    assert!(s.cable_preview().is_some_and(|p| !p.valid));
+    assert_eq!(s.scene().tubes.len(), CABLE_SEGMENTS);
+
+    // Back over the port it came from: drawn as it was.
+    s.pointer_move(port_px(&s, out), false, 0.0);
+    assert_eq!(s.cable_preview(), None);
+    assert_eq!(s.shown_document(), s.document());
+    assert_eq!(s.scene().tubes.len(), CABLE_SEGMENTS);
+
+    s.pointer_move(port_px(&s, lo), false, 0.0);
+    s.escape(0.0);
+    assert_eq!(s.document().cables[0].b, out);
+    assert_eq!(s.revision(), 0);
+    assert_eq!(s.scene().tubes.len(), CABLE_SEGMENTS);
+}
+
+#[test]
+fn replugging_onto_a_taken_port_or_empty_space_changes_nothing() {
+    let (mut d, [hi, lo, sense, out]) = wired();
+    d.cables.push(cable("C2", lo, sense));
+    let mut s = session(d);
+    pick_up(&mut s, out);
+    s.pointer_move(port_px(&s, lo), false, 0.0);
+    assert!(s.cable_preview().is_some_and(|p| !p.valid));
+    s.pointer_up(port_px(&s, lo), false, 0.0);
+
+    connect_drag(&mut s, out, Vec2::new(400.0, 590.0));
+    let to = port_px(&s, out);
+    connect_drag(&mut s, out, to);
+    assert_eq!(s.revision(), 0, "no change and no empty undo step");
+    assert_eq!(
+        (s.document().cables[0].a, s.document().cables[0].b),
+        (hi, out)
+    );
+}
+
+#[test]
+fn dropping_a_picked_up_end_in_the_trash_deletes_the_cable() {
+    let (d, [_, _, _, out]) = wired();
+    let mut s = session(d);
+    pick_up(&mut s, out);
+    let to = Vec2::new(400.0, 590.0);
+    s.pointer_move(to, true, 0.0);
+    assert_eq!(s.cable_preview(), None);
+    s.pointer_up(to, true, 0.0);
+    assert!(s.document().cables.is_empty());
+    assert!(s.document().port(out).is_some(), "the ports stay");
+}
+
+#[test]
+fn the_port_panel_handle_picks_up_the_cable_end() {
+    let (d, [hi, _, sense, out]) = wired();
+    let id = d.cables[0].id;
+    let mut s = session(d);
+    s.start_drag(DragSource::CableEnd { cable: id, end: hi }, 0.0);
+    let to = port_px(&s, sense);
+    s.pointer_move(to, false, 0.0);
+    s.pointer_up(to, false, 0.0);
+    let c = &s.document().cables[0];
+    assert_eq!((c.a, c.b), (sense, out));
+}
+
+#[test]
+fn a_cable_between_different_connector_types_is_previewed_amber_but_allowed() {
+    let (mut d, [hi, lo, sense, _]) = station();
+    let ports = &mut d.racks[0].devices[0].ports;
+    ports[0].kind = tsv_core::model::PortKind::Bnc;
+    ports[1].kind = tsv_core::model::PortKind::Sma;
+    ports[2].kind = tsv_core::model::PortKind::Bnc;
+    let mut s = session(d);
+    pick_up(&mut s, hi);
+
+    s.pointer_move(port_px(&s, lo), false, 0.0);
+    let preview = s.cable_preview().expect("amber preview");
+    assert!(preview.valid);
+    assert_eq!(preview.color, tsv_render::scene::CABLE_WARNING);
+    assert_eq!(
+        preview.to,
+        port_anchor(s.document(), &s.limits, lo).unwrap()
+    );
+    assert_eq!(
+        s.shown_document().cables.len(),
+        1,
+        "the planned cable is in the preview"
+    );
+    let amber = tsv_render::scene::rgba(tsv_render::scene::CABLE_WARNING, 1.0);
+    let cable_tubes: Vec<_> = s
+        .scene()
+        .tubes
+        .into_iter()
+        .filter(|t| t.radius == tsv_render::layout::CABLE_RADIUS_MM)
+        .collect();
+    assert_eq!(cable_tubes.len(), CABLE_SEGMENTS, "drawn once");
+    assert!(cable_tubes.iter().all(|t| t.color == amber), "in amber");
+
+    // Same type: the ordinary preview.
+    s.pointer_move(port_px(&s, sense), false, 0.0);
+    assert_eq!(s.cable_preview(), None);
+
+    s.pointer_move(port_px(&s, lo), false, 0.0);
+    s.pointer_up(port_px(&s, lo), false, 0.0);
+    let doc = s.document();
+    assert!(doc.cable_mismatch(&doc.cables[0]).is_some());
+}

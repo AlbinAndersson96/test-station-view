@@ -1,5 +1,7 @@
 mod common;
 
+use tsv_core::model::PortKind;
+
 use common::*;
 use glam::{Vec2, Vec3};
 use tsv_core::model::Document;
@@ -69,7 +71,7 @@ fn port_marker_protrudes_from_its_cell() {
     let d = device("D", 1, 1);
     let cell = Cell { row: 0, col: 2 };
     let rect = port_cell_rect(0, &d, cell, &limits());
-    let marker = port_marker_box(0, &d, cell, &limits());
+    let marker = port_marker_box(0, &d, cell, PortKind::Unspecified, &limits());
     assert!(rect.contains(Vec2::new(marker.min.x, marker.min.y)));
     assert!(rect.contains(Vec2::new(marker.max.x, marker.max.y)));
     assert_close(marker.max.z, PORT_PROTRUSION_MM);
@@ -128,7 +130,7 @@ fn object_bounds_finds_racks_devices_and_ports() {
     let port_b = object_bounds(&d, &l, ObjectId::Port(pid)).unwrap();
     assert_eq!(
         port_b,
-        port_marker_box(1, &dev, Cell { row: 0, col: 1 }, &l)
+        port_marker_box(1, &dev, Cell { row: 0, col: 1 }, PortKind::Unspecified, &l)
     );
     assert_eq!(
         object_bounds(&d, &l, ObjectId::Device(tsv_core::ids::DeviceId::new())),

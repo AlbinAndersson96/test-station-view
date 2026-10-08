@@ -88,36 +88,56 @@ mentioned here behaves as described there. It answers the open questions in
   - **Esc**, pointer cancel or losing the window cancels the drag. The trash zone is not shown
     for cable drags.
   - The camera does not move into port mode.
+- **Shift + left-drag from a port that has a cable** re-plugs that cable's end (added
+  2026-10-08, after the first release).
+  - **Pick-up:** the end at that port comes loose. The cable keeps its other end, name and
+    colour, and the loose end follows the pointer as a preview in the cable's own colour.
+  - **Over a free port:** the preview shows the cable plugged in there, and that port's name is
+    shown.
+  - **Over a port that cannot take it** (a port with another cable, or the cable's other end),
+    the preview runs to that port and is red.
+  - **Over the port it came from:** the cable is shown as it was.
+  - **Over anything else:** the loose end follows the point under the pointer.
+  - **Release:** over a free port, the end moves there in one undo step and the cable is
+    selected. Over the trash zone, which is shown for these drags, the cable is deleted.
+    Anywhere else, nothing changes.
+  - **Cancel:** Esc, pointer cancel or losing the window, as for other drags.
+  - **Rule:** re-plugging is rejected when the target port already has a cable, when it is the
+    cable's other end, or when the cable or a port no longer exists. Re-plugging an end onto
+    the port it is already on changes nothing.
 - **Properties panel:**
   - **Port:** shows its cable's name (a click selects the cable). A port without a cable shows
-    a "⠿ Drag to a port to connect" handle that starts the same drag.
+    a "⠿ Drag to a port to connect" handle that starts the same drag. A port with a cable shows
+    a "⠿ Drag to re-plug" handle that picks up the cable's end at this port.
   - **Cable:** Name (editable), Colour (editable), and both ends as `Rack/Device/Port`, read-only.
 - **Tree:** a "Cables" list under the racks, with one row per cable. The label is the cable's
   name and the detail is its ends as `Device.Port – Device.Port`. Click selects, double-click
   frames, and right-click offers Rename and Delete, like other rows. A port's row shows its
   cable's name as its detail.
 - **Context menu in 3D** on a cable: Rename and Delete, as for other objects.
-- **Help overlay:** adds "Shift-drag a port: connect a cable".
+- **Help overlay:** adds "Shift-drag a port: connect or re-plug a cable".
 
 ## 6. Code shape
 
 - **`tsv-core`:**
   - `CableId`, `Cable`, `Document::cables` and the lookups `cable` and `cable_at_port`.
   - `ObjectId::Cable`.
-  - `edit/cable.rs`: `plan_connect`, `plan_remove_cable`, `plan_rename_cable` and
-    `plan_set_cable_color`.
+  - `edit/cable.rs`: `plan_connect`, `plan_replug`, `plan_remove_cable`, `plan_rename_cable`
+    and `plan_set_cable_color`.
   - The removal plans for ports, devices and racks drop the attached cables.
   - Format v2 with migration, and the new validation errors.
 - **`tsv-render`:**
   - `layout::port_anchor` and `layout::cable_path` (pure).
   - `scene::TubeInstance`, plus `Scene::tubes` and `Scene::selected_tubes`.
-  - `SceneInput::cable_preview`.
+  - `SceneInput::cable_preview` (with the preview's colour) and `SceneInput::hidden_cable`
+    (the cable whose end is being re-plugged is drawn only as the preview).
   - `pick` handles cables (ray–segment distance).
   - `object_bounds` handles cables.
   - `gpu` gets a tube pipeline (an 8-sided prism with end caps, unlit edges) and a tube mask
     pipeline for the selection outline.
 - **`tsv-app`:**
-  - `DragSource::Cable { from }` and `pointer_down`'s modifier flag.
+  - `DragSource::Cable { from }`, `DragSource::CableEnd { cable, end }` and `pointer_down`'s
+    modifier flag.
   - Session methods to rename, recolour and delete cables (through the existing `rename` and
     `delete`) and `set_cable_color`.
   - UI: properties, tree list, help line and handle.
@@ -125,5 +145,4 @@ mentioned here behaves as described there. It answers the open questions in
 ## 7. Out of scope (still)
 
 - Cable type, length, connector compatibility, routing through cable trays, and rear ports.
-- Re-plugging an existing cable's end by dragging it. Delete the cable and draw a new one.
 - Several cables per port (splitters, daisy chains).

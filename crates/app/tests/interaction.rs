@@ -1,5 +1,7 @@
 mod common;
 
+use tsv_core::model::PortKind;
+
 use common::*;
 use glam::{Vec2, Vec3};
 use tsv_app::interaction::{Button, DragSource};
@@ -201,6 +203,7 @@ fn port_drags_zoom_to_the_face_and_back() {
         DragSource::NewPort {
             device: did,
             name: name("B"),
+            kind: PortKind::Unspecified,
         },
         now,
     );
@@ -228,7 +231,13 @@ fn hovering_a_port_marks_it() {
     let d = with_ports(device("D", 10, 1), vec![p]);
     let mut s = session(doc(vec![rack("R", 42, vec![d])]));
     let dev = s.document().racks[0].devices[0].clone();
-    let marker = port_marker_box(0, &dev, Cell { row: 0, col: 2 }, &limits());
+    let marker = port_marker_box(
+        0,
+        &dev,
+        Cell { row: 0, col: 2 },
+        PortKind::Unspecified,
+        &limits(),
+    );
     let at = px(
         &s,
         Vec3::new(marker.center().x, marker.center().y, marker.max.z),
@@ -317,6 +326,7 @@ fn undoing_away_a_hovered_port_clears_the_hover() {
         DragSource::NewPort {
             device: did,
             name: name("P"),
+            kind: PortKind::Unspecified,
         },
         now,
     );
@@ -330,7 +340,13 @@ fn undoing_away_a_hovered_port_clears_the_hover() {
     s.pointer_up(p, false, now);
     settle(&mut s, &mut now);
     let dev = s.document().racks[0].devices[0].clone();
-    let marker = port_marker_box(0, &dev, Cell { row: 0, col: 1 }, &limits());
+    let marker = port_marker_box(
+        0,
+        &dev,
+        Cell { row: 0, col: 1 },
+        PortKind::Unspecified,
+        &limits(),
+    );
     let at = px(
         &s,
         Vec3::new(marker.center().x, marker.center().y, marker.max.z),

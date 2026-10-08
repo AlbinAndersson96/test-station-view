@@ -8,7 +8,7 @@ use crate::port_grid::{self, Cell, GridSize, PushDir};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortSource {
-    New { name: Name },
+    New { name: Name, kind: PortKind },
     Existing(PortId),
 }
 
@@ -31,7 +31,7 @@ pub fn plan_port_drop(
     };
 
     let mut port = match source {
-        PortSource::New { name } => {
+        PortSource::New { name, kind } => {
             if device.ports.iter().any(|p| p.name.same_as(name)) {
                 return Err(Rejection::NameTaken(name.to_string()));
             }
@@ -40,7 +40,7 @@ pub fn plan_port_drop(
                 name: name.clone(),
                 row: 0,
                 col: 0,
-                kind: PortKind::default(),
+                kind: *kind,
             }
         }
         PortSource::Existing(port_id) => {
@@ -109,6 +109,20 @@ pub fn plan_rename_port(doc: &Document, port_id: PortId, name: Name) -> Result<P
     }
     let mut document = doc.clone();
     document.racks[ri].devices[di].ports[pi].name = name;
+    Ok(Plan {
+        document,
+        subject: Some(ObjectId::Port(port_id)),
+    })
+}
+
+pub fn plan_set_port_kind(
+    doc: &Document,
+    port_id: PortId,
+    kind: PortKind,
+) -> Result<Plan, Rejection> {
+    let (ri, di, pi) = doc.port_location(port_id).ok_or(Rejection::NotFound)?;
+    let mut document = doc.clone();
+    document.racks[ri].devices[di].ports[pi].kind = kind;
     Ok(Plan {
         document,
         subject: Some(ObjectId::Port(port_id)),

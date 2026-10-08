@@ -1,5 +1,7 @@
 mod common;
 
+use tsv_core::model::PortKind;
+
 use common::*;
 use glam::Vec3;
 use tsv_core::edit::ObjectId;
@@ -51,7 +53,14 @@ fn picks_the_nearest_object() {
     let doc = doc(vec![r]);
     let dev = &doc.racks[0].devices[0];
 
-    let marker = port_marker_box(0, dev, Cell { row: 0, col: 0 }, &limits()).center();
+    let marker = port_marker_box(
+        0,
+        dev,
+        Cell { row: 0, col: 0 },
+        PortKind::Unspecified,
+        &limits(),
+    )
+    .center();
     assert_eq!(
         pick(&doc, &limits(), &ray_at(marker.x, marker.y)),
         Some(ObjectId::Port(pid))

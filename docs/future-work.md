@@ -27,31 +27,35 @@ instead of entering the height by hand. Each placed instance keeps its own name.
 
 ### Connector types for ports
 
-Ports would carry a connector type (BNC, SMA, USB, LAN/RJ45, GPIB, banana, D-sub, …), possibly
-with a different look per type.
+**Done.** See `docs/superpowers/specs/2026-10-08-port-types-design.md`. Ports have a type from a
+fixed list (BNC, SMA, N-type, banana, USB, LAN, GPIB, D-sub, power, other), each with its own
+marker shape and colour. A cable between two different specific types is allowed but flagged.
 
-- **Extension point:** `PortKind` in `crates/core/src/model.rs` currently has only
-  `Unspecified`. The `kind` field is already in the file format, defaulting to `unspecified`.
-- **Rendering:** port markers are drawn in `tsv-render`'s `scene::build_scene` and
-  `layout::port_marker_box`. Per-type shapes or colours would start there.
+- **Adding a type:**
+  - a `PortKind` variant (with `label`, `key` and `ALL`);
+  - `FilePortKind` and a format-version bump;
+  - `layout::marker_shape` and `scene::port_color`.
+- **Still open:**
+  - user-defined types;
+  - gender (male/female);
+  - an explicit adapter object instead of the mismatch warning.
 
 ### Cables between ports
 
 **Done.** See `docs/superpowers/specs/2026-10-08-cables-design.md`. A cable joins two ports,
 anywhere in the document, at most one per port. It has a name and a colour, and it is drawn in
-3D as a sagging tube.
+3D as a sagging tube. Shift-dragging from a free port draws a cable; from a connected port it
+re-plugs that cable's end.
 
 - **Still open:**
   - cable type and length;
-  - connector compatibility (once ports have a `PortKind`);
   - routing through cable trays, and rear-face ports;
-  - several cables per port (splitters);
-  - re-plugging a cable's end by dragging it.
+  - several cables per port (splitters).
 - **Extension points:**
   - `Cable` in `crates/core/src/model.rs` and its file-format twin `FileCable` (new fields need
     a format bump);
   - `layout::cable_path` for the shape;
-  - the per-port rule in `plan_connect` and `validate::check_cables`.
+  - the per-port rule in `plan_connect`, `plan_replug` and `validate::check_cables`.
 
 ### Shared backend storage
 

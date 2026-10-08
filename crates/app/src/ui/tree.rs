@@ -84,9 +84,16 @@ fn rows(collapsed: &[ObjectId]) -> Vec<Row> {
                     rows.push(Row {
                         target: RenameTarget::Object(ObjectId::Port(port.id)),
                         label: port.name.to_string(),
-                        detail: doc
-                            .cable_at_port(port.id)
-                            .map_or(String::new(), |c| c.name.to_string()),
+                        detail: [
+                            port.kind
+                                .is_specific()
+                                .then(|| port.kind.label().to_string()),
+                            doc.cable_at_port(port.id).map(|c| c.name.to_string()),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .join(" · "),
                         depth: 3,
                         rack_index: None,
                         expander: None,
@@ -112,7 +119,16 @@ fn cable_rows() -> Vec<Row> {
             .map(|c| Row {
                 target: RenameTarget::Object(ObjectId::Cable(c.id)),
                 label: c.name.to_string(),
-                detail: format!("{} – {}", end(c.a), end(c.b)),
+                detail: format!(
+                    "{}{} – {}",
+                    if doc.cable_mismatch(c).is_some() {
+                        "⚠ "
+                    } else {
+                        ""
+                    },
+                    end(c.a),
+                    end(c.b)
+                ),
                 depth: 1,
                 rack_index: None,
                 expander: None,

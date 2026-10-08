@@ -7,7 +7,7 @@ use glam::{Vec2, Vec3};
 use tsv_core::edit::ObjectId;
 use tsv_core::ids::PortId;
 use tsv_core::limits::Limits;
-use tsv_core::model::{Cable, Device, Document, Rack};
+use tsv_core::model::{Cable, Device, Document, PortKind, Rack};
 use tsv_core::port_grid::Cell;
 
 pub const U_MM: f32 = 44.45;
@@ -220,16 +220,54 @@ pub fn port_cell_rect(rack_index: usize, device: &Device, cell: Cell, limits: &L
     }
 }
 
-/// The small square marker drawn for a port, in the upper part of its cell.
-pub fn port_marker_box(rack_index: usize, device: &Device, cell: Cell, limits: &Limits) -> Aabb {
+/// The outline of a port's marker, in units of the plain square marker's side.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MarkerShape {
+    Square,
+    /// A cylinder sticking out of the face, with this diameter.
+    Round(f32),
+    /// Width × height.
+    Rect(f32, f32),
+}
+
+pub fn marker_shape(kind: PortKind) -> MarkerShape {
+    match kind {
+        PortKind::Unspecified | PortKind::Other => MarkerShape::Square,
+        PortKind::Bnc => MarkerShape::Round(1.0),
+        PortKind::Sma => MarkerShape::Round(0.6),
+        PortKind::NType => MarkerShape::Round(1.2),
+        PortKind::Banana => MarkerShape::Round(0.5),
+        PortKind::Usb => MarkerShape::Rect(1.2, 0.5),
+        PortKind::Lan => MarkerShape::Rect(1.0, 0.8),
+        PortKind::Gpib => MarkerShape::Rect(1.9, 0.5),
+        PortKind::DSub => MarkerShape::Rect(1.6, 0.6),
+        PortKind::Power => MarkerShape::Rect(1.2, 0.9),
+    }
+}
+
+/// The marker drawn for a port of `kind`, centred in the upper part of its cell. Its size
+/// follows `marker_shape`; a round marker's box is the cylinder's bounds.
+pub fn port_marker_box(
+    rack_index: usize,
+    device: &Device,
+    cell: Cell,
+    kind: PortKind,
+    limits: &Limits,
+) -> Aabb {
     let r = port_cell_rect(rack_index, device, cell, limits);
     let size = r.size();
     let side = size.x.min(size.y) * 0.45;
+    let (w, h) = match marker_shape(kind) {
+        MarkerShape::Square => (1.0, 1.0),
+        MarkerShape::Round(d) => (d, d),
+        MarkerShape::Rect(w, h) => (w, h),
+    };
+    let half = Vec2::new(side * w, side * h) * 0.5;
     let cx = (r.min.x + r.max.x) * 0.5;
     let cy = r.min.y + size.y * 0.62;
     Aabb::new(
-        Vec3::new(cx - side * 0.5, cy - side * 0.5, 0.0),
-        Vec3::new(cx + side * 0.5, cy + side * 0.5, PORT_PROTRUSION_MM),
+        Vec3::new(cx - half.x, cy - half.y, 0.0),
+        Vec3::new(cx + half.x, cy + half.y, PORT_PROTRUSION_MM),
     )
 }
 
@@ -332,6 +370,7 @@ pub fn object_bounds(doc: &Document, limits: &Limits, id: ObjectId) -> Option<Aa
                             row: p.row,
                             col: p.col,
                         },
+                        p.kind,
                         limits,
                     )
                 })

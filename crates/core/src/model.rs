@@ -53,11 +53,81 @@ pub enum DeviceKind {
     AdHoc,
 }
 
-/// Reserved for future connector types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// A port's connector type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PortKind {
     #[default]
     Unspecified,
+    Bnc,
+    Sma,
+    NType,
+    Banana,
+    Usb,
+    Lan,
+    Gpib,
+    DSub,
+    Power,
+    Other,
+}
+
+impl PortKind {
+    /// Every type, in the order the UI lists them.
+    pub const ALL: [PortKind; 11] = [
+        PortKind::Unspecified,
+        PortKind::Bnc,
+        PortKind::Sma,
+        PortKind::NType,
+        PortKind::Banana,
+        PortKind::Usb,
+        PortKind::Lan,
+        PortKind::Gpib,
+        PortKind::DSub,
+        PortKind::Power,
+        PortKind::Other,
+    ];
+
+    /// The name shown to users.
+    pub fn label(self) -> &'static str {
+        match self {
+            PortKind::Unspecified => "Unspecified",
+            PortKind::Bnc => "BNC",
+            PortKind::Sma => "SMA",
+            PortKind::NType => "N-type",
+            PortKind::Banana => "Banana",
+            PortKind::Usb => "USB",
+            PortKind::Lan => "LAN (RJ45)",
+            PortKind::Gpib => "GPIB",
+            PortKind::DSub => "D-sub",
+            PortKind::Power => "Power (IEC)",
+            PortKind::Other => "Other",
+        }
+    }
+
+    /// A stable identifier (the file format's spelling, also used for UI option values).
+    pub fn key(self) -> &'static str {
+        match self {
+            PortKind::Unspecified => "unspecified",
+            PortKind::Bnc => "bnc",
+            PortKind::Sma => "sma",
+            PortKind::NType => "n_type",
+            PortKind::Banana => "banana",
+            PortKind::Usb => "usb",
+            PortKind::Lan => "lan",
+            PortKind::Gpib => "gpib",
+            PortKind::DSub => "d_sub",
+            PortKind::Power => "power",
+            PortKind::Other => "other",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<PortKind> {
+        PortKind::ALL.into_iter().find(|k| k.key() == key)
+    }
+
+    /// A real connector type: only these can mismatch.
+    pub fn is_specific(self) -> bool {
+        !matches!(self, PortKind::Unspecified | PortKind::Other)
+    }
 }
 
 /// A port in cell (`row`, `col`) of its device's front face. Row 0 is the bottom row.
@@ -176,6 +246,14 @@ impl Document {
 
     pub fn cable(&self, id: CableId) -> Option<&Cable> {
         self.cables.iter().find(|c| c.id == id)
+    }
+
+    /// The types of `cable`'s ends when both are specific and differ (a warning, not an error).
+    pub fn cable_mismatch(&self, cable: &Cable) -> Option<(PortKind, PortKind)> {
+        let (_, _, a) = self.port(cable.a)?;
+        let (_, _, b) = self.port(cable.b)?;
+        (a.kind.is_specific() && b.kind.is_specific() && a.kind != b.kind)
+            .then_some((a.kind, b.kind))
     }
 
     /// The cable plugged into `port`, if any.

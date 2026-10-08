@@ -6,13 +6,13 @@ use tsv_core::edit::{
     ObjectId, Plan, Rejection, plan_add_rack, plan_move_rack, plan_new_document, plan_remove_cable,
     plan_remove_device, plan_remove_port, plan_remove_rack, plan_rename_cable, plan_rename_device,
     plan_rename_document, plan_rename_port, plan_rename_rack, plan_set_cable_color,
-    plan_set_device_color, plan_set_device_height, plan_set_rack_height,
+    plan_set_device_color, plan_set_device_height, plan_set_port_kind, plan_set_rack_height,
 };
 use tsv_core::editor::Editor;
 use tsv_core::file_format::{from_json, to_json};
 use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
 use tsv_core::limits::Limits;
-use tsv_core::model::{Document, Rgb};
+use tsv_core::model::{Document, PortKind, Rgb};
 use tsv_render::camera::OrbitCamera;
 use tsv_render::layout::{object_bounds, scene_bounds};
 use tsv_render::pick::Ray;
@@ -48,6 +48,7 @@ pub struct Session {
     pub(crate) preview: Option<Plan>,
     pub(crate) ghost: Option<Ghost>,
     pub(crate) cable_preview: Option<CablePreview>,
+    pub(crate) hidden_cable: Option<CableId>,
     last_frame_s: Option<f64>,
     revision: u64,
     ui_revision: u64,
@@ -73,6 +74,7 @@ impl Session {
             preview: None,
             ghost: None,
             cable_preview: None,
+            hidden_cable: None,
             last_frame_s: None,
             revision: 0,
             ui_revision: 0,
@@ -251,6 +253,11 @@ impl Session {
         let _ = self.apply(result);
     }
 
+    pub fn set_port_kind(&mut self, port: PortId, kind: PortKind) {
+        let result = plan_set_port_kind(self.editor.document(), port, kind);
+        let _ = self.apply(result);
+    }
+
     pub fn set_cable_color(&mut self, cable: CableId, color: Rgb) {
         let result = plan_set_cable_color(self.editor.document(), cable, color);
         let _ = self.apply(result);
@@ -390,6 +397,7 @@ impl Session {
             hovered_port: self.hovered_port,
             ghost: self.ghost,
             cable_preview: self.cable_preview,
+            hidden_cable: self.hidden_cable,
         };
         build_scene(&input, &self.view.motion)
     }

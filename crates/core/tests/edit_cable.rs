@@ -246,3 +246,58 @@ fn moving_ports_and_devices_keeps_cables() {
 fn a_new_document_has_no_cables() {
     assert!(plan_new_document(&limits()).document.cables.is_empty());
 }
+
+fn replug(d: &Document, end: PortId, to: PortId) -> Result<Plan, Rejection> {
+    plan_replug(d, d.cables[0].id, end, to)
+}
+
+#[test]
+fn replugging_moves_one_end_and_keeps_the_cable() {
+    let d = connected(&station(), ("DMM", "HI"), ("PSU", "OUT"));
+    let (hi, out, ch1) = (
+        port_id(&d, "DMM", "HI"),
+        port_id(&d, "PSU", "OUT"),
+        port_id(&d, "SCOPE", "CH1"),
+    );
+    let plan = replug(&d, out, ch1).unwrap();
+    let c = &plan.document.cables[0];
+    assert_eq!((c.a, c.b), (hi, ch1));
+    assert_eq!(
+        (c.id, &c.name, c.color),
+        (d.cables[0].id, &d.cables[0].name, d.cables[0].color)
+    );
+    assert_eq!(plan.subject, Some(ObjectId::Cable(c.id)));
+    assert_eq!(plan.document.racks, d.racks);
+
+    // The `a` end can be moved too.
+    let plan = replug(&d, hi, ch1).unwrap();
+    let c = &plan.document.cables[0];
+    assert_eq!((c.a, c.b), (ch1, out));
+}
+
+#[test]
+fn replugging_onto_the_same_port_changes_nothing() {
+    let d = connected(&station(), ("DMM", "HI"), ("PSU", "OUT"));
+    let out = port_id(&d, "PSU", "OUT");
+    assert_eq!(replug(&d, out, out).unwrap().document, d);
+}
+
+#[test]
+fn replugging_follows_the_cable_rules() {
+    let d = connected(&station(), ("DMM", "HI"), ("PSU", "OUT"));
+    let d = connected(&d, ("DMM", "LO"), ("SCOPE", "CH1"));
+    let (hi, out, lo) = (
+        port_id(&d, "DMM", "HI"),
+        port_id(&d, "PSU", "OUT"),
+        port_id(&d, "DMM", "LO"),
+    );
+    assert_eq!(replug(&d, out, hi), Err(Rejection::SamePort));
+    assert_eq!(replug(&d, out, lo), Err(Rejection::PortInUse("LO".into())));
+    assert_eq!(replug(&d, out, PortId::new()), Err(Rejection::NotFound));
+    // `end` must be one of the cable's ends.
+    assert_eq!(replug(&d, lo, out), Err(Rejection::NotFound));
+    assert_eq!(
+        plan_replug(&d, tsv_core::ids::CableId::new(), out, hi),
+        Err(Rejection::NotFound)
+    );
+}

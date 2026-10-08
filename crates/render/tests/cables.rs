@@ -1,5 +1,7 @@
 mod common;
 
+use tsv_core::model::PortKind;
+
 use common::*;
 use glam::Vec3;
 use tsv_core::edit::ObjectId;
@@ -31,6 +33,7 @@ fn input<'a>(d: &'a Document, l: &'a tsv_core::limits::Limits) -> SceneInput<'a>
         hovered_port: None,
         ghost: None,
         cable_preview: None,
+        hidden_cable: None,
     }
 }
 
@@ -46,7 +49,7 @@ fn a_port_anchor_is_the_front_centre_of_its_marker() {
     let (d, hi, _, _) = station();
     let l = limits();
     let dmm = &d.racks[0].devices[0];
-    let marker = port_marker_box(0, dmm, Cell { row: 0, col: 0 }, &l);
+    let marker = port_marker_box(0, dmm, Cell { row: 0, col: 0 }, PortKind::Unspecified, &l);
     let anchor = port_anchor(&d, &l, hi).unwrap();
     assert_close(anchor.x, marker.center().x);
     assert_close(anchor.y, marker.center().y);
@@ -140,7 +143,12 @@ fn the_cable_preview_is_drawn_and_turns_red_when_invalid() {
     let with = |valid| {
         build_scene(
             &SceneInput {
-                cable_preview: Some(CablePreview { from, to, valid }),
+                cable_preview: Some(CablePreview {
+                    from,
+                    to,
+                    color: Rgb::CABLE_BLUE,
+                    valid,
+                }),
                 ..input(&d, &l)
             },
             &Motion::default(),
@@ -206,4 +214,41 @@ fn ray_to_segment_distance() {
         ray.closest_to_segment(Vec3::new(0.0, 0.0, 6000.0), Vec3::new(1.0, 0.0, 6000.0)),
         None
     );
+}
+
+#[test]
+fn a_preview_keeps_its_colour_unless_invalid() {
+    let (d, _, _, _) = station();
+    let l = limits();
+    let green = Rgb { r: 0, g: 200, b: 0 };
+    let preview = CablePreview {
+        from: Vec3::new(0.0, 500.0, PORT_PROTRUSION_MM),
+        to: Vec3::new(300.0, 400.0, 0.0),
+        color: green,
+        valid: true,
+    };
+    let scene = build_scene(
+        &SceneInput {
+            cable_preview: Some(preview),
+            ..input(&d, &l)
+        },
+        &Motion::default(),
+    );
+    assert_eq!(scene.tubes[CABLE_SEGMENTS].color, rgba(green, 1.0));
+}
+
+#[test]
+fn a_hidden_cable_is_not_drawn_but_its_ports_are() {
+    let (d, _, _, _) = station();
+    let l = limits();
+    let shown = build_scene(&input(&d, &l), &Motion::default());
+    let hidden = build_scene(
+        &SceneInput {
+            hidden_cable: Some(d.cables[0].id),
+            ..input(&d, &l)
+        },
+        &Motion::default(),
+    );
+    assert!(hidden.tubes.is_empty());
+    assert_eq!(hidden.opaque, shown.opaque);
 }

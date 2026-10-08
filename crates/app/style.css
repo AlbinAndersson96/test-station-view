@@ -22,7 +22,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.link { justify-self: start; padding: 0; border: none; background: none; color: var(--accent); text-decoration: underline; }
 button.danger { background: var(--danger); border-color: var(--danger); }
-input { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; width: 100%; }
+input, select { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; width: 100%; }
 input[type="color"] { padding: 0; height: 28px; }
 
 .splash { display: grid; place-content: center; height: 100%; text-align: center; padding: 16px; }
@@ -53,6 +53,7 @@ input[type="color"] { padding: 0; height: 28px; }
 .add-rack { margin-top: 6px; width: 100%; }
 
 .field { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 6px; margin: 4px 0; }
+.warning { color: #b26a00; font-size: 12px; margin: 4px 0; }
 .field-error { color: var(--error); font-size: 12px; margin: 2px 0 4px 96px; }
 .handle { margin-top: 6px; padding: 8px; text-align: center; border: 1px dashed var(--accent); border-radius: 6px; color: var(--accent); cursor: grab; user-select: none; touch-action: none; }
 .handle.disabled { border-color: var(--line); color: var(--muted); cursor: not-allowed; }
