@@ -11,7 +11,7 @@ use crate::model::{Cable, Device, DeviceKind, Document, Port, PortKind, Rack, Rg
 use crate::name::{DocumentName, Name};
 use crate::validate::{ValidationError, validate};
 
-pub const FORMAT_VERSION: u64 = 2;
+pub const FORMAT_VERSION: u64 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LoadError {
@@ -90,6 +90,16 @@ enum FileDeviceKind {
 enum FilePortKind {
     #[default]
     Unspecified,
+    Bnc,
+    Sma,
+    NType,
+    Banana,
+    Usb,
+    Lan,
+    Gpib,
+    DSub,
+    Power,
+    Other,
 }
 
 pub fn to_json(doc: &Document) -> String {
@@ -129,7 +139,9 @@ fn migrate(mut value: Value, version: u64) -> Result<Value, LoadError> {
             }
             migrate(value, 2)
         }
-        2 => Ok(value),
+        // Version 3 added port types; the shape is unchanged.
+        2 => migrate(value, 3),
+        3 => Ok(value),
         other => Err(LoadError::Malformed(format!(
             "unsupported format version {other}"
         ))),
@@ -167,6 +179,16 @@ fn port_to_file(port: &Port) -> FilePort {
         col: port.col,
         kind: match port.kind {
             PortKind::Unspecified => FilePortKind::Unspecified,
+            PortKind::Bnc => FilePortKind::Bnc,
+            PortKind::Sma => FilePortKind::Sma,
+            PortKind::NType => FilePortKind::NType,
+            PortKind::Banana => FilePortKind::Banana,
+            PortKind::Usb => FilePortKind::Usb,
+            PortKind::Lan => FilePortKind::Lan,
+            PortKind::Gpib => FilePortKind::Gpib,
+            PortKind::DSub => FilePortKind::DSub,
+            PortKind::Power => FilePortKind::Power,
+            PortKind::Other => FilePortKind::Other,
         },
     }
 }
@@ -258,6 +280,16 @@ fn port_from_file(port: FilePort, limits: &Limits) -> Result<Port, LoadError> {
         col: port.col,
         kind: match port.kind {
             FilePortKind::Unspecified => PortKind::Unspecified,
+            FilePortKind::Bnc => PortKind::Bnc,
+            FilePortKind::Sma => PortKind::Sma,
+            FilePortKind::NType => PortKind::NType,
+            FilePortKind::Banana => PortKind::Banana,
+            FilePortKind::Usb => PortKind::Usb,
+            FilePortKind::Lan => PortKind::Lan,
+            FilePortKind::Gpib => PortKind::Gpib,
+            FilePortKind::DSub => PortKind::DSub,
+            FilePortKind::Power => PortKind::Power,
+            FilePortKind::Other => PortKind::Other,
         },
     })
 }

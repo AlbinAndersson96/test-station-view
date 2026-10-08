@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 use tsv_core::edit::ObjectId;
 use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
-use tsv_core::model::Document;
+use tsv_core::model::{Document, PortKind};
 
 use crate::forms::{
     color_from_input, color_to_input, new_device_input, new_port_input, parse_document_name,
@@ -34,6 +34,7 @@ enum Selected {
     Port {
         id: PortId,
         name: String,
+        kind: PortKind,
         /// The cable plugged into the port: its ID and name.
         cable: Option<(CableId, String)>,
     },
@@ -43,6 +44,8 @@ enum Selected {
         color: String,
         a: String,
         b: String,
+        /// "⚠ BNC to SMA" when the ends' connector types differ.
+        warning: Option<String>,
     },
 }
 
@@ -76,6 +79,7 @@ fn selected() -> Selected {
             Some(ObjectId::Port(id)) => doc.port(id).map(|(_, _, p)| Selected::Port {
                 id,
                 name: p.name.to_string(),
+                kind: p.kind,
                 cable: doc.cable_at_port(id).map(|c| (c.id, c.name.to_string())),
             }),
             Some(ObjectId::Cable(id)) => doc.cable(id).map(|c| Selected::Cable {
@@ -84,6 +88,9 @@ fn selected() -> Selected {
                 color: color_to_input(c.color),
                 a: port_path(doc, c.a),
                 b: port_path(doc, c.b),
+                warning: doc
+                    .cable_mismatch(c)
+                    .map(|(a, b)| format!("⚠ {} to {}", a.label(), b.label())),
             }),
             None => None,
         }
@@ -134,9 +141,10 @@ pub fn Properties() -> impl IntoView {
                         <div class="field"><span>"Position"</span><span>{position}</span></div>
                     }
                         .into_any(),
-                    Selected::Port { id, name, cable } => view! {
+                    Selected::Port { id, name, kind, cable } => view! {
                         <Field label="Name" value=name check=check_name focus_for=ObjectId::Port(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Port(id), &v)) />
+                        <KindSelect value=kind on_change=move |k| update(|s| s.set_port_kind(id, k)) />
                         {
                             let (source, hint) = match &cable {
                                 Some((cable, _)) => (DragSource::CableEnd { cable: *cable, end: id }, "⠿ Drag to re-plug"),
@@ -168,7 +176,7 @@ pub fn Properties() -> impl IntoView {
                         }
                     }
                         .into_any(),
-                    Selected::Cable { id, name, color, a, b } => view! {
+                    Selected::Cable { id, name, color, a, b, warning } => view! {
                         <Field label="Name" value=name check=check_name focus_for=ObjectId::Cable(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Cable(id), &v)) />
                         <label class="field">
@@ -185,11 +193,35 @@ pub fn Properties() -> impl IntoView {
                         </label>
                         <div class="field"><span>"From"</span><span>{a}</span></div>
                         <div class="field"><span>"To"</span><span>{b}</span></div>
+                        {warning.map(|w| view! { <div class="warning">{w}</div> })}
                     }
                         .into_any(),
                 }
             }}
         </section>
+    }
+}
+
+/// A connector-type dropdown.
+#[component]
+fn KindSelect(value: PortKind, on_change: impl Fn(PortKind) + 'static) -> impl IntoView {
+    view! {
+        <label class="field">
+            <span>"Type"</span>
+            <select
+                prop:value=value.key()
+                on:change=move |ev| {
+                    if let Some(k) = PortKind::from_key(&event_target_value(&ev)) {
+                        on_change(k);
+                    }
+                }
+            >
+                {PortKind::ALL
+                    .iter()
+                    .map(|k| view! { <option value=k.key() selected=*k == value>{k.label()}</option> })
+                    .collect_view()}
+            </select>
+        </label>
     }
 }
 
@@ -326,6 +358,7 @@ pub fn NewDeviceForm() -> impl IntoView {
 pub fn NewPortForm() -> impl IntoView {
     let sig = signals();
     let name = RwSignal::new(String::new());
+    let kind = RwSignal::new(PortKind::Unspecified);
     let device = move || {
         sig.rev.track();
         read(|s| {
@@ -355,13 +388,18 @@ pub fn NewPortForm() -> impl IntoView {
                     on:input=move |ev| name.set(event_target_value(&ev))
                 />
             </label>
+            <KindSelect value=PortKind::Unspecified on_change=move |k| kind.set(k) />
             {move || (!name.get().is_empty()).then(|| checked().err()).flatten()
                 .map(|e| view! { <div class="field-error">{e}</div> })}
             <div
                 class="handle"
                 class:disabled=move || checked().is_err()
                 on:pointerdown=move |ev| {
-                    let source = checked().ok().map(|(device, name)| DragSource::NewPort { device, name });
+                    let source = checked().ok().map(|(device, name)| DragSource::NewPort {
+                        device,
+                        name,
+                        kind: kind.get_untracked(),
+                    });
                     handle_down(&ev, source);
                 }
                 on:pointermove=move |ev| forward_move(&ev)

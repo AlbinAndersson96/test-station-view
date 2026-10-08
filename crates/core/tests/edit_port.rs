@@ -18,7 +18,10 @@ fn drop_port(
 }
 
 fn new(n: &str) -> PortSource {
-    PortSource::New { name: name(n) }
+    PortSource::New {
+        name: name(n),
+        kind: tsv_core::model::PortKind::Unspecified,
+    }
 }
 
 /// `(name, row, col)` of every port, sorted by name.

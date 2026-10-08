@@ -6,13 +6,13 @@ use glam::{Vec2, Vec3};
 use tsv_core::edit::ObjectId;
 use tsv_core::ids::{CableId, PortId};
 use tsv_core::limits::Limits;
-use tsv_core::model::{Document, Rgb};
+use tsv_core::model::{Document, PortKind, Rgb};
 use tsv_core::port_grid::Cell;
 
 use crate::layout::{
-    Aabb, CABLE_RADIUS_MM, FLOOR_MARGIN_MM, FaceRect, cable_path, device_box, device_name_rect,
-    marker_anchor, port_label_rect, port_marker_box, rack_name_rect, rack_parts, scene_bounds,
-    u_label_rect,
+    Aabb, CABLE_RADIUS_MM, FLOOR_MARGIN_MM, FaceRect, MarkerShape, cable_path, device_box,
+    device_name_rect, marker_anchor, marker_shape, port_label_rect, port_marker_box,
+    rack_name_rect, rack_parts, scene_bounds, u_label_rect,
 };
 
 pub const BACKGROUND: Rgb = Rgb {
@@ -31,6 +31,12 @@ pub const GHOST_INVALID: Rgb = Rgb {
     b: 40,
 };
 pub const GHOST_ALPHA: f32 = 0.45;
+/// A cable preview that would join two different connector types (allowed, but flagged).
+pub const CABLE_WARNING: Rgb = Rgb {
+    r: 0xf0,
+    g: 0xa0,
+    b: 0x20,
+};
 /// Time for moved objects to (visually) reach their new position.
 pub const MOTION_SECONDS: f32 = 0.12;
 /// Longest time step one `Motion::update` applies, so the first frame after an idle period
@@ -125,6 +131,27 @@ pub fn rgba(c: Rgb, alpha: f32) -> [f32; 4] {
     ]
 }
 
+/// The marker colour of a connector type; `None` draws it in the device's ink.
+pub fn port_color(kind: PortKind) -> Option<Rgb> {
+    let rgb = |hex: u32| Rgb {
+        r: (hex >> 16) as u8,
+        g: (hex >> 8) as u8,
+        b: hex as u8,
+    };
+    match kind {
+        PortKind::Unspecified | PortKind::Other => None,
+        PortKind::Bnc => Some(rgb(0xd4a017)),
+        PortKind::Sma => Some(rgb(0xe07b20)),
+        PortKind::NType => Some(rgb(0x8a5cd6)),
+        PortKind::Banana => Some(rgb(0xd93636)),
+        PortKind::Usb => Some(rgb(0x2a7de1)),
+        PortKind::Lan => Some(rgb(0x2bb673)),
+        PortKind::Gpib => Some(rgb(0x1f3a93)),
+        PortKind::DSub => Some(rgb(0x6b7c8f)),
+        PortKind::Power => Some(rgb(0x2b2b2b)),
+    }
+}
+
 /// Black or white, whichever reads better on `background`.
 pub fn contrast_text(background: Rgb) -> [u8; 4] {
     let luminance =
@@ -149,7 +176,7 @@ pub fn animation_targets(doc: &Document, limits: &Limits) -> Vec<(ObjectId, Vec3
                 };
                 targets.push((
                     ObjectId::Port(port.id),
-                    port_marker_box(ri, device, cell, limits).min,
+                    port_marker_box(ri, device, cell, port.kind, limits).min,
                 ));
             }
         }
@@ -272,17 +299,30 @@ pub fn build_scene(input: &SceneInput, motion: &Motion) -> Scene {
                     row: port.row,
                     col: port.col,
                 };
-                let resting = port_marker_box(ri, device, cell, input.limits);
+                let resting = port_marker_box(ri, device, cell, port.kind, input.limits);
                 let offset = motion.offset(pid, resting.min);
-                let b = BoxInstance {
-                    aabb: resting.translated(offset),
-                    color: rgba(marker_color, 1.0),
-                };
-                scene.opaque.push(b);
-                anchors.insert(port.id, marker_anchor(&b.aabb));
+                let aabb = resting.translated(offset);
+                let color = rgba(port_color(port.kind).unwrap_or(marker_color), 1.0);
+                anchors.insert(port.id, marker_anchor(&aabb));
                 let selected = input.selection == Some(pid);
-                if selected {
-                    scene.selected.push(b);
+                if let MarkerShape::Round(_) = marker_shape(port.kind) {
+                    let c = aabb.center();
+                    let t = TubeInstance {
+                        a: Vec3::new(c.x, c.y, aabb.min.z),
+                        b: Vec3::new(c.x, c.y, aabb.max.z),
+                        radius: aabb.size().x * 0.5,
+                        color,
+                    };
+                    scene.tubes.push(t);
+                    if selected {
+                        scene.selected_tubes.push(t);
+                    }
+                } else {
+                    let b = BoxInstance { aabb, color };
+                    scene.opaque.push(b);
+                    if selected {
+                        scene.selected.push(b);
+                    }
                 }
                 let cable_end = selected_cable.is_some_and(|c| c.touches(port.id));
                 if selected || device_selected || cable_end || input.hovered_port == Some(port.id) {

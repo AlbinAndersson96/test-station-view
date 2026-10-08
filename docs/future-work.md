@@ -27,13 +27,18 @@ instead of entering the height by hand. Each placed instance keeps its own name.
 
 ### Connector types for ports
 
-Ports would carry a connector type (BNC, SMA, USB, LAN/RJ45, GPIB, banana, D-sub, …), possibly
-with a different look per type.
+**Done.** See `docs/superpowers/specs/2026-10-08-port-types-design.md`. Ports have a type from a
+fixed list (BNC, SMA, N-type, banana, USB, LAN, GPIB, D-sub, power, other), each with its own
+marker shape and colour. A cable between two different specific types is allowed but flagged.
 
-- **Extension point:** `PortKind` in `crates/core/src/model.rs` currently has only
-  `Unspecified`. The `kind` field is already in the file format, defaulting to `unspecified`.
-- **Rendering:** port markers are drawn in `tsv-render`'s `scene::build_scene` and
-  `layout::port_marker_box`. Per-type shapes or colours would start there.
+- **Adding a type:**
+  - a `PortKind` variant (with `label`, `key` and `ALL`);
+  - `FilePortKind` and a format-version bump;
+  - `layout::marker_shape` and `scene::port_color`.
+- **Still open:**
+  - user-defined types;
+  - gender (male/female);
+  - an explicit adapter object instead of the mismatch warning.
 
 ### Cables between ports
 
@@ -44,7 +49,6 @@ re-plugs that cable's end.
 
 - **Still open:**
   - cable type and length;
-  - connector compatibility (once ports have a `PortKind`);
   - routing through cable trays, and rear-face ports;
   - several cables per port (splitters).
 - **Extension points:**

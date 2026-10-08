@@ -104,7 +104,7 @@ pub fn pick_hit(doc: &Document, limits: &Limits, ray: &Ray) -> Option<(ObjectId,
                 };
                 consider(
                     &mut best,
-                    ray.hit_aabb(&port_marker_box(ri, device, cell, limits)),
+                    ray.hit_aabb(&port_marker_box(ri, device, cell, port.kind, limits)),
                     ObjectId::Port(port.id),
                 );
             }

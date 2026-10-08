@@ -348,3 +348,46 @@ fn the_port_panel_handle_picks_up_the_cable_end() {
     let c = &s.document().cables[0];
     assert_eq!((c.a, c.b), (sense, out));
 }
+
+#[test]
+fn a_cable_between_different_connector_types_is_previewed_amber_but_allowed() {
+    let (mut d, [hi, lo, sense, _]) = station();
+    let ports = &mut d.racks[0].devices[0].ports;
+    ports[0].kind = tsv_core::model::PortKind::Bnc;
+    ports[1].kind = tsv_core::model::PortKind::Sma;
+    ports[2].kind = tsv_core::model::PortKind::Bnc;
+    let mut s = session(d);
+    pick_up(&mut s, hi);
+
+    s.pointer_move(port_px(&s, lo), false, 0.0);
+    let preview = s.cable_preview().expect("amber preview");
+    assert!(preview.valid);
+    assert_eq!(preview.color, tsv_render::scene::CABLE_WARNING);
+    assert_eq!(
+        preview.to,
+        port_anchor(s.document(), &s.limits, lo).unwrap()
+    );
+    assert_eq!(
+        s.shown_document().cables.len(),
+        1,
+        "the planned cable is in the preview"
+    );
+    let amber = tsv_render::scene::rgba(tsv_render::scene::CABLE_WARNING, 1.0);
+    let cable_tubes: Vec<_> = s
+        .scene()
+        .tubes
+        .into_iter()
+        .filter(|t| t.radius == tsv_render::layout::CABLE_RADIUS_MM)
+        .collect();
+    assert_eq!(cable_tubes.len(), CABLE_SEGMENTS, "drawn once");
+    assert!(cable_tubes.iter().all(|t| t.color == amber), "in amber");
+
+    // Same type: the ordinary preview.
+    s.pointer_move(port_px(&s, sense), false, 0.0);
+    assert_eq!(s.cable_preview(), None);
+
+    s.pointer_move(port_px(&s, lo), false, 0.0);
+    s.pointer_up(port_px(&s, lo), false, 0.0);
+    let doc = s.document();
+    assert!(doc.cable_mismatch(&doc.cables[0]).is_some());
+}

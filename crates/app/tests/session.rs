@@ -196,3 +196,23 @@ fn editing_an_object_that_no_longer_exists_is_an_error_not_a_panic() {
     s.set_device_color(did, Rgb::NEUTRAL_GREY);
     s.frame(ObjectId::Device(did), 0.0);
 }
+
+#[test]
+fn a_port_type_change_is_one_undo_step() {
+    use tsv_core::model::PortKind;
+    let p = port("CH1", 0, 0);
+    let pid = p.id;
+    let mut s = session(doc(vec![rack(
+        "R",
+        42,
+        vec![with_ports(device("D", 1, 1), vec![p])],
+    )]));
+    s.set_port_kind(pid, PortKind::Bnc);
+    assert_eq!(s.document().port(pid).unwrap().2.kind, PortKind::Bnc);
+    assert_eq!(s.revision(), 1);
+    s.undo();
+    assert_eq!(
+        s.document().port(pid).unwrap().2.kind,
+        PortKind::Unspecified
+    );
+}

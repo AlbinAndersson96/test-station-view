@@ -9,12 +9,12 @@ use tsv_core::edit::{
     plan_remove_cable, plan_remove_device, plan_remove_port, plan_replug,
 };
 use tsv_core::ids::{CableId, DeviceId, PortId};
-use tsv_core::model::Rgb;
+use tsv_core::model::{PortKind, Rgb};
 use tsv_core::name::Name;
 use tsv_core::port_grid::Cell;
 use tsv_render::layout::{device_face, object_bounds, port_anchor, port_marker_box, units_box};
 use tsv_render::pick::{device_drop_target, grab_offset_u, pick, pick_hit, port_drop_target};
-use tsv_render::scene::{CablePreview, Ghost, contrast_text};
+use tsv_render::scene::{CABLE_WARNING, CablePreview, Ghost, contrast_text, port_color};
 
 use crate::session::Session;
 
@@ -39,6 +39,7 @@ pub enum DragSource {
     NewPort {
         device: DeviceId,
         name: Name,
+        kind: PortKind,
     },
     Port {
         device: DeviceId,
@@ -411,9 +412,20 @@ impl Session {
                 unreachable!("handled above")
             }
             DragSource::NewPort { device, .. } | DragSource::Port { device, .. } => {
-                let core_source = match source {
-                    DragSource::NewPort { name, .. } => PortSource::New { name: name.clone() },
-                    DragSource::Port { port, .. } => PortSource::Existing(*port),
+                let (core_source, kind) = match source {
+                    DragSource::NewPort { name, kind, .. } => (
+                        PortSource::New {
+                            name: name.clone(),
+                            kind: *kind,
+                        },
+                        *kind,
+                    ),
+                    DragSource::Port { port, .. } => {
+                        let Some((_, _, p)) = doc.port(*port) else {
+                            return;
+                        };
+                        (PortSource::Existing(*port), p.kind)
+                    }
                     _ => unreachable!(),
                 };
                 let Some((ri, d)) = doc.racks.iter().enumerate().find_map(|(ri, r)| {
@@ -422,11 +434,11 @@ impl Session {
                     return;
                 };
                 let ink = contrast_text(d.color);
-                let color = Rgb {
+                let color = port_color(kind).unwrap_or(Rgb {
                     r: ink[0],
                     g: ink[1],
                     b: ink[2],
-                };
+                });
                 let Some(target) = port_drop_target(doc, limits, *device, &ray) else {
                     return;
                 };
@@ -447,7 +459,7 @@ impl Session {
                             row: target.cell.row,
                             col: target.cell.col,
                         };
-                        let aabb = port_marker_box(ri, d, cell, limits);
+                        let aabb = port_marker_box(ri, d, cell, kind, limits);
                         self.ghost = Some(Ghost {
                             aabb,
                             color,
@@ -511,7 +523,28 @@ impl Session {
         };
         self.hovered_port = target;
         match outcome {
-            Outcome::Plug(plan) => self.preview = Some(plan),
+            Outcome::Plug(plan) => {
+                // A cable between different connector types is allowed but drawn in amber.
+                let mismatched = match plan.subject {
+                    Some(ObjectId::Cable(id)) => plan
+                        .document
+                        .cable(id)
+                        .filter(|c| plan.document.cable_mismatch(c).is_some())
+                        .map(|_| id),
+                    _ => None,
+                };
+                if let (Some(id), Some(p)) = (mismatched, target) {
+                    self.hidden_cable = Some(id);
+                    self.cable_preview =
+                        port_anchor(&plan.document, limits, p).map(|to| CablePreview {
+                            from: start,
+                            to,
+                            color: CABLE_WARNING,
+                            valid: true,
+                        });
+                }
+                self.preview = Some(plan);
+            }
             Outcome::Unchanged => {}
             Outcome::Loose(end) => {
                 self.hidden_cable = moving.map(|(cable, _)| cable);

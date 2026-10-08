@@ -6,13 +6,13 @@ use tsv_core::edit::{
     ObjectId, Plan, Rejection, plan_add_rack, plan_move_rack, plan_new_document, plan_remove_cable,
     plan_remove_device, plan_remove_port, plan_remove_rack, plan_rename_cable, plan_rename_device,
     plan_rename_document, plan_rename_port, plan_rename_rack, plan_set_cable_color,
-    plan_set_device_color, plan_set_device_height, plan_set_rack_height,
+    plan_set_device_color, plan_set_device_height, plan_set_port_kind, plan_set_rack_height,
 };
 use tsv_core::editor::Editor;
 use tsv_core::file_format::{from_json, to_json};
 use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
 use tsv_core::limits::Limits;
-use tsv_core::model::{Document, Rgb};
+use tsv_core::model::{Document, PortKind, Rgb};
 use tsv_render::camera::OrbitCamera;
 use tsv_render::layout::{object_bounds, scene_bounds};
 use tsv_render::pick::Ray;
@@ -250,6 +250,11 @@ impl Session {
 
     pub fn set_device_color(&mut self, device: DeviceId, color: Rgb) {
         let result = plan_set_device_color(self.editor.document(), device, color);
+        let _ = self.apply(result);
+    }
+
+    pub fn set_port_kind(&mut self, port: PortId, kind: PortKind) {
+        let result = plan_set_port_kind(self.editor.document(), port, kind);
         let _ = self.apply(result);
     }
 
