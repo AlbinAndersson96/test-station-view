@@ -2,7 +2,8 @@
 
 use leptos::prelude::*;
 use tsv_core::edit::ObjectId;
-use tsv_core::ids::{DeviceId, RackId};
+use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
+use tsv_core::model::Document;
 
 use crate::forms::{
     color_from_input, color_to_input, new_device_input, new_port_input, parse_document_name,
@@ -31,9 +32,25 @@ enum Selected {
         position: String,
     },
     Port {
-        id: tsv_core::ids::PortId,
+        id: PortId,
         name: String,
+        /// The cable plugged into the port: its ID and name.
+        cable: Option<(CableId, String)>,
     },
+    Cable {
+        id: CableId,
+        name: String,
+        color: String,
+        a: String,
+        b: String,
+    },
+}
+
+/// `Rack/Device/Port`, or "—" for a port that no longer exists.
+fn port_path(doc: &Document, port: PortId) -> String {
+    doc.port(port).map_or("—".to_string(), |(r, d, p)| {
+        format!("{}/{}/{}", r.name, d.name, p.name)
+    })
 }
 
 fn selected() -> Selected {
@@ -59,6 +76,14 @@ fn selected() -> Selected {
             Some(ObjectId::Port(id)) => doc.port(id).map(|(_, _, p)| Selected::Port {
                 id,
                 name: p.name.to_string(),
+                cable: doc.cable_at_port(id).map(|c| (c.id, c.name.to_string())),
+            }),
+            Some(ObjectId::Cable(id)) => doc.cable(id).map(|c| Selected::Cable {
+                id,
+                name: c.name.to_string(),
+                color: color_to_input(c.color),
+                a: port_path(doc, c.a),
+                b: port_path(doc, c.b),
             }),
             None => None,
         }
@@ -109,9 +134,55 @@ pub fn Properties() -> impl IntoView {
                         <div class="field"><span>"Position"</span><span>{position}</span></div>
                     }
                         .into_any(),
-                    Selected::Port { id, name } => view! {
+                    Selected::Port { id, name, cable } => view! {
                         <Field label="Name" value=name check=check_name focus_for=ObjectId::Port(id)
                             commit=move |v: String| update(|s| s.rename(ObjectId::Port(id), &v)) />
+                        {match cable {
+                            Some((cable, cable_name)) => view! {
+                                <div class="field">
+                                    <span>"Cable"</span>
+                                    <button
+                                        class="link"
+                                        on:click=move |_| update(|s| s.select(Some(ObjectId::Cable(cable))))
+                                    >
+                                        {cable_name}
+                                    </button>
+                                </div>
+                            }
+                                .into_any(),
+                            None => view! {
+                                <div
+                                    class="handle"
+                                    on:pointerdown=move |ev| handle_down(&ev, Some(DragSource::Cable { from: id }))
+                                    on:pointermove=move |ev| forward_move(&ev)
+                                    on:pointerup=move |ev| forward_up(&ev)
+                                    on:pointercancel=move |_| forward_cancel()
+                                    on:lostpointercapture=move |_| forward_cancel()
+                                >
+                                    "⠿ Drag to a port to connect"
+                                </div>
+                            }
+                                .into_any(),
+                        }}
+                    }
+                        .into_any(),
+                    Selected::Cable { id, name, color, a, b } => view! {
+                        <Field label="Name" value=name check=check_name focus_for=ObjectId::Cable(id)
+                            commit=move |v: String| update(|s| s.rename(ObjectId::Cable(id), &v)) />
+                        <label class="field">
+                            <span>"Colour"</span>
+                            <input
+                                type="color"
+                                prop:value=color
+                                on:change=move |ev| {
+                                    if let Some(c) = color_from_input(&event_target_value(&ev)) {
+                                        update(|s| s.set_cable_color(id, c));
+                                    }
+                                }
+                            />
+                        </label>
+                        <div class="field"><span>"From"</span><span>{a}</span></div>
+                        <div class="field"><span>"To"</span><span>{b}</span></div>
                     }
                         .into_any(),
                 }

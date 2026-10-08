@@ -15,10 +15,19 @@ fn sample() -> Document {
         g: 0xab,
         b: 0xff,
     };
+    let mut psu = with_ports(device("PSU", 1, 1), vec![port("OUT", 0, 0)]);
+    psu.ports[0].kind = PortKind::Unspecified;
+    let mut lead = cable("Sense", dmm.ports[0].id, psu.ports[0].id);
+    lead.color = Rgb {
+        r: 0xee,
+        g: 0x11,
+        b: 0x22,
+    };
     let mut d = doc(vec![
-        rack("Rack1", 42, vec![dmm, device("PSU", 1, 1)]),
+        rack("Rack1", 42, vec![dmm, psu]),
         rack("Rack2", 24, vec![]),
     ]);
+    d.cables = vec![lead];
     d.name = tsv_core::name::DocumentName::parse("Lab 3 Station").unwrap();
     d
 }
@@ -32,8 +41,66 @@ fn round_trip_preserves_the_document() {
 #[test]
 fn output_is_pretty_and_versioned() {
     let json = to_json(&sample());
-    assert!(json.starts_with("{\n  \"format_version\": 1,"), "{json}");
+    assert!(json.starts_with("{\n  \"format_version\": 2,"), "{json}");
     assert!(json.contains("\"color\": \"#12abff\""), "{json}");
+    assert!(json.contains("\"cables\": ["), "{json}");
+    assert!(json.contains("\"color\": \"#ee1122\""), "{json}");
+}
+
+#[test]
+fn version_1_files_load_without_cables() {
+    let original = sample();
+    let json = to_json(&original).replacen("\"format_version\": 2", "\"format_version\": 1", 1);
+    let d = from_json(&remove_cables(&json), &limits()).unwrap();
+    assert!(d.cables.is_empty());
+    assert_eq!(d.racks, original.racks);
+}
+
+#[test]
+fn version_2_files_need_a_cable_list() {
+    let json = remove_cables(&to_json(&sample()));
+    assert!(matches!(
+        from_json(&json, &limits()),
+        Err(LoadError::Malformed(_))
+    ));
+}
+
+#[test]
+fn cables_with_unknown_ends_are_rejected() {
+    let mut d = sample();
+    d.cables[0].b = tsv_core::ids::PortId::new();
+    let err = from_json(&to_json(&d), &limits()).unwrap_err();
+    assert_eq!(
+        err,
+        LoadError::Invalid(ValidationError::CableEndMissing {
+            cable: "Sense".into()
+        })
+    );
+    assert_eq!(
+        err.to_string(),
+        "Cable 'Sense': an end is not a port in this document"
+    );
+}
+
+#[test]
+fn cable_names_and_colours_are_checked() {
+    let json = to_json(&sample()).replace("\"name\": \"Sense\"", "\"name\": \"Se nse\"");
+    assert!(matches!(
+        from_json(&json, &limits()),
+        Err(LoadError::InvalidName { .. })
+    ));
+    let json = to_json(&sample()).replace("#ee1122", "red");
+    assert_eq!(
+        from_json(&json, &limits()),
+        Err(LoadError::InvalidColor("red".into()))
+    );
+}
+
+/// The JSON with its top-level `cables` field taken out.
+fn remove_cables(json: &str) -> String {
+    let mut value: serde_json::Value = serde_json::from_str(json).unwrap();
+    value.as_object_mut().unwrap().remove("cables");
+    value.to_string()
 }
 
 #[test]
@@ -68,9 +135,9 @@ fn missing_kinds_default() {
 
 #[test]
 fn newer_versions_are_rejected() {
-    let json = to_json(&sample()).replacen("\"format_version\": 1", "\"format_version\": 2", 1);
+    let json = to_json(&sample()).replacen("\"format_version\": 2", "\"format_version\": 3", 1);
     let err = from_json(&json, &limits()).unwrap_err();
-    assert_eq!(err, LoadError::TooNew { found: 2 });
+    assert_eq!(err, LoadError::TooNew { found: 3 });
     assert_eq!(
         err.to_string(),
         "This file was made by a newer version of the app."

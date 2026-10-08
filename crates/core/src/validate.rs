@@ -5,8 +5,9 @@ use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
+use crate::ids::PortId;
 use crate::limits::Limits;
-use crate::model::{Device, Document, Rack};
+use crate::model::{Cable, Device, Document, Rack};
 use crate::name::Name;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -42,6 +43,19 @@ pub enum ValidationError {
         a: String,
         b: String,
     },
+    #[error("The cable name '{0}' is used more than once")]
+    DuplicateCableName(String),
+    #[error("Cable '{cable}': an end is not a port in this document")]
+    CableEndMissing { cable: String },
+    #[error("Cable '{cable}': both ends are the same port")]
+    CableEndsEqual { cable: String },
+    #[error("Device '{device}': port '{port}' has two cables, '{a}' and '{b}'")]
+    PortHasTwoCables {
+        device: String,
+        port: String,
+        a: String,
+        b: String,
+    },
 }
 
 pub fn validate(doc: &Document, limits: &Limits) -> Result<(), ValidationError> {
@@ -52,7 +66,7 @@ pub fn validate(doc: &Document, limits: &Limits) -> Result<(), ValidationError> 
     for rack in &doc.racks {
         check_rack(rack, limits)?;
     }
-    Ok(())
+    check_cables(doc)
 }
 
 fn check_unique_ids(doc: &Document) -> Result<(), ValidationError> {
@@ -72,6 +86,9 @@ fn check_unique_ids(doc: &Document) -> Result<(), ValidationError> {
                 insert(port.id.0)?;
             }
         }
+    }
+    for cable in &doc.cables {
+        insert(cable.id.0)?;
     }
     Ok(())
 }
@@ -159,6 +176,33 @@ fn check_ports(device: &Device, limits: &Limits) -> Result<(), ValidationError> 
                 a: other.to_string(),
                 b: port.name.to_string(),
             });
+        }
+    }
+    Ok(())
+}
+
+fn check_cables(doc: &Document) -> Result<(), ValidationError> {
+    if let Some(name) = first_duplicate(doc.cables.iter().map(|c| &c.name)) {
+        return Err(ValidationError::DuplicateCableName(name.to_string()));
+    }
+    let mut used: HashMap<PortId, &Cable> = HashMap::new();
+    for cable in &doc.cables {
+        let cable_name = cable.name.to_string();
+        if cable.a == cable.b {
+            return Err(ValidationError::CableEndsEqual { cable: cable_name });
+        }
+        for end in cable.ends() {
+            let Some((_, device, port)) = doc.port(end) else {
+                return Err(ValidationError::CableEndMissing { cable: cable_name });
+            };
+            if let Some(other) = used.insert(end, cable) {
+                return Err(ValidationError::PortHasTwoCables {
+                    device: device.name.to_string(),
+                    port: port.name.to_string(),
+                    a: other.name.to_string(),
+                    b: cable_name,
+                });
+            }
         }
     }
     Ok(())

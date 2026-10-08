@@ -14,6 +14,7 @@ fn input<'a>(d: &'a tsv_core::model::Document, l: &'a tsv_core::limits::Limits) 
         selection: None,
         hovered_port: None,
         ghost: None,
+        cable_preview: None,
     }
 }
 

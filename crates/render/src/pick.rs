@@ -8,9 +8,12 @@ use tsv_core::model::{Device, Document};
 use tsv_core::port_grid::{Cell, PushDir, push_direction};
 
 use crate::layout::{
-    Aabb, PLINTH_MM, RACK_WIDTH_MM, U_MM, device_box, device_face, port_cell_rect, port_marker_box,
-    rack_left_x, rack_parts,
+    Aabb, CABLE_RADIUS_MM, PLINTH_MM, RACK_WIDTH_MM, U_MM, cable_points, device_box, device_face,
+    port_cell_rect, port_marker_box, rack_left_x, rack_parts,
 };
+
+/// A ray this close to a cable's axis hits it, so thin cables are easy to click.
+pub const CABLE_PICK_RADIUS_MM: f32 = 2.0 * CABLE_RADIUS_MM;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray {
@@ -41,6 +44,23 @@ impl Ray {
         (t_far >= t_near).then_some(t_near)
     }
 
+    /// The shortest distance between the ray and the segment `a`–`b`, and the distance along
+    /// the ray to that closest approach. `None` if the closest approach lies behind the origin.
+    pub fn closest_to_segment(&self, a: Vec3, b: Vec3) -> Option<(f32, f32)> {
+        let perpendicular = |v: Vec3| v - self.dir * v.dot(self.dir);
+        let w = a - self.origin;
+        let d = b - a;
+        let (w_perp, d_perp) = (perpendicular(w), perpendicular(d));
+        let len2 = d_perp.length_squared();
+        let u = if len2 > 1e-9 {
+            (-w_perp.dot(d_perp) / len2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let t = (w + d * u).dot(self.dir);
+        (t >= 0.0).then(|| ((w_perp + d_perp * u).length(), t))
+    }
+
     /// Point where the ray crosses the plane of constant `z`, if it does (in front of the origin).
     pub fn hit_plane_z(&self, z: f32) -> Option<Vec3> {
         if self.dir.z.abs() < 1e-6 {
@@ -51,7 +71,8 @@ impl Ray {
     }
 }
 
-/// The nearest rack, device or port under the ray.
+/// The nearest rack, device, port or cable under the ray. A port beats a cable in front of it,
+/// so connected ports stay easy to pick.
 pub fn pick(doc: &Document, limits: &Limits, ray: &Ray) -> Option<ObjectId> {
     pick_hit(doc, limits, ray).map(|(id, _)| id)
 }
@@ -59,19 +80,20 @@ pub fn pick(doc: &Document, limits: &Limits, ray: &Ray) -> Option<ObjectId> {
 /// Like `pick`, plus the world point where the ray enters the object.
 pub fn pick_hit(doc: &Document, limits: &Limits, ray: &Ray) -> Option<(ObjectId, Vec3)> {
     let mut best: Option<(f32, ObjectId)> = None;
-    let mut consider = |t: Option<f32>, id: ObjectId| {
+    let consider = |best: &mut Option<(f32, ObjectId)>, t: Option<f32>, id: ObjectId| {
         if let Some(t) = t
             && best.is_none_or(|(bt, _)| t < bt)
         {
-            best = Some((t, id));
+            *best = Some((t, id));
         }
     };
     for (ri, rack) in doc.racks.iter().enumerate() {
         for part in rack_parts(ri, rack) {
-            consider(ray.hit_aabb(&part), ObjectId::Rack(rack.id));
+            consider(&mut best, ray.hit_aabb(&part), ObjectId::Rack(rack.id));
         }
         for device in &rack.devices {
             consider(
+                &mut best,
                 ray.hit_aabb(&device_box(ri, device)),
                 ObjectId::Device(device.id),
             );
@@ -81,10 +103,25 @@ pub fn pick_hit(doc: &Document, limits: &Limits, ray: &Ray) -> Option<(ObjectId,
                     col: port.col,
                 };
                 consider(
+                    &mut best,
                     ray.hit_aabb(&port_marker_box(ri, device, cell, limits)),
                     ObjectId::Port(port.id),
                 );
             }
+        }
+    }
+    if !matches!(best, Some((_, ObjectId::Port(_)))) {
+        for cable in &doc.cables {
+            let Some(points) = cable_points(doc, limits, cable) else {
+                continue;
+            };
+            let t = points
+                .windows(2)
+                .filter_map(|s| ray.closest_to_segment(s[0], s[1]))
+                .filter(|&(distance, _)| distance <= CABLE_PICK_RADIUS_MM)
+                .map(|(_, t)| t)
+                .reduce(f32::min);
+            consider(&mut best, t, ObjectId::Cable(cable.id));
         }
     }
     best.map(|(t, id)| (id, ray.origin + ray.dir * t))

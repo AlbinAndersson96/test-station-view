@@ -1,4 +1,5 @@
-// Boxes (opaque, translucent ghost, selection mask), labels and the selection outline.
+// Boxes (opaque, translucent ghost, selection mask), cable tubes, labels and the selection
+// outline.
 
 struct Globals {
     view_proj: mat4x4<f32>,
@@ -57,6 +58,43 @@ fn fs_box(in: BoxOut) -> @location(0) vec4<f32> {
     let dark = dot(lit, vec3<f32>(0.2126, 0.7152, 0.0722)) < DARK_LUMINANCE;
     let edge_color = select(lit * EDGE_DARKEN, mix(lit, vec3<f32>(1.0), EDGE_LIGHTEN), dark);
     return vec4<f32>(mix(lit, edge_color, edge), in.color.a);
+}
+
+struct TubeIn {
+    // A prism of radius 1 around the z axis, from z = 0 to z = 1.
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    // xyz: start, w: radius.
+    @location(2) a: vec4<f32>,
+    // xyz: end.
+    @location(3) b: vec4<f32>,
+    @location(4) color: vec4<f32>,
+};
+
+// Places the unit prism along a → b. The basis (u, v, w) is right-handed, so faces keep
+// their winding and back-face culling still works.
+@vertex
+fn vs_tube(t: TubeIn) -> BoxOut {
+    let along = t.b.xyz - t.a.xyz;
+    let w = along / max(length(along), 1e-6);
+    let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(w.y) > 0.99);
+    let u = normalize(cross(up, w));
+    let v = cross(w, u);
+    let radius = t.a.w;
+    let world = t.a.xyz + (u * t.position.x + v * t.position.y) * radius + along * t.position.z;
+    var out: BoxOut;
+    out.clip = globals.view_proj * vec4<f32>(world, 1.0);
+    out.normal = u * t.normal.x + v * t.normal.y + w * t.normal.z;
+    out.color = t.color;
+    out.local = vec3<f32>(0.5);
+    return out;
+}
+
+// Like `fs_box` without edge lines.
+@fragment
+fn fs_tube(in: BoxOut) -> @location(0) vec4<f32> {
+    let light = 0.5 + 0.5 * max(dot(normalize(in.normal), globals.light_dir.xyz), 0.0);
+    return vec4<f32>(in.color.rgb * light, in.color.a);
 }
 
 @fragment

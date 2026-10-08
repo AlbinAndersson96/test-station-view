@@ -1,3 +1,4 @@
+use crate::edit::cable::drop_dangling_cables;
 use crate::edit::{ObjectId, Plan, Rejection};
 use crate::ids::RackId;
 use crate::limits::Limits;
@@ -30,6 +31,7 @@ pub fn plan_remove_rack(doc: &Document, rack_id: RackId) -> Result<Plan, Rejecti
     let index = doc.rack_index(rack_id).ok_or(Rejection::NotFound)?;
     let mut document = doc.clone();
     document.racks.remove(index);
+    drop_dangling_cables(&mut document);
     Ok(Plan {
         document,
         subject: None,

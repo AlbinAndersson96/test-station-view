@@ -5,16 +5,16 @@
 
 use glam::{Vec2, Vec3};
 use tsv_core::edit::{
-    DeviceSource, ObjectId, PortSource, plan_device_drop, plan_port_drop, plan_remove_device,
-    plan_remove_port,
+    DeviceSource, ObjectId, Plan, PortSource, plan_connect, plan_device_drop, plan_port_drop,
+    plan_remove_device, plan_remove_port,
 };
 use tsv_core::ids::{DeviceId, PortId};
 use tsv_core::model::Rgb;
 use tsv_core::name::Name;
 use tsv_core::port_grid::Cell;
-use tsv_render::layout::{device_face, object_bounds, port_marker_box, units_box};
+use tsv_render::layout::{device_face, object_bounds, port_anchor, port_marker_box, units_box};
 use tsv_render::pick::{device_drop_target, grab_offset_u, pick, pick_hit, port_drop_target};
-use tsv_render::scene::{Ghost, contrast_text};
+use tsv_render::scene::{CablePreview, Ghost, contrast_text};
 
 use crate::session::Session;
 
@@ -31,10 +31,23 @@ pub enum Button {
 /// What is being dragged.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DragSource {
-    NewDevice { name: Name, height_u: u32 },
+    NewDevice {
+        name: Name,
+        height_u: u32,
+    },
     Device(DeviceId),
-    NewPort { device: DeviceId, name: Name },
-    Port { device: DeviceId, port: PortId },
+    NewPort {
+        device: DeviceId,
+        name: Name,
+    },
+    Port {
+        device: DeviceId,
+        port: PortId,
+    },
+    /// A new cable from port `from` (Shift-drag from a port, or the port panel's handle).
+    Cable {
+        from: PortId,
+    },
 }
 
 impl DragSource {
@@ -50,6 +63,8 @@ pub(crate) enum Mode {
     Pressed {
         start: Vec2,
         hit: Option<(ObjectId, Vec3)>,
+        /// Shift was held: dragging from a port draws a cable instead of moving the port.
+        connect: bool,
     },
     Orbiting {
         last: Vec2,
@@ -71,8 +86,14 @@ impl Mode {
 
 impl Session {
     /// `true` while a device or port is being dragged (the UI shows the trash zone).
+    /// Drawing a cable does not count: there is nothing to delete.
     pub fn is_dragging(&self) -> bool {
-        matches!(self.mode, Mode::Dragging { .. })
+        matches!(&self.mode, Mode::Dragging { source, .. } if !matches!(source, DragSource::Cable { .. }))
+    }
+
+    /// The loose cable being drawn, when the pointer is not over a port it can connect to.
+    pub fn cable_preview(&self) -> Option<CablePreview> {
+        self.cable_preview
     }
 
     /// Whether `pos` lies on the canvas. Off-canvas positions never target anything.
@@ -86,13 +107,22 @@ impl Session {
     }
 
     pub fn pointer_down(&mut self, pos: Vec2, button: Button) {
+        self.pointer_down_with_shift(pos, button, false);
+    }
+
+    /// Like `pointer_down`; with `shift`, a drag from a port draws a cable.
+    pub fn pointer_down_with_shift(&mut self, pos: Vec2, button: Button, shift: bool) {
         if !self.mode.is_idle() {
             return;
         }
         self.mode = match button {
             Button::Left => {
                 let hit = pick_hit(self.document(), &self.limits, &self.ray_at(pos));
-                Mode::Pressed { start: pos, hit }
+                Mode::Pressed {
+                    start: pos,
+                    hit,
+                    connect: shift,
+                }
             }
             Button::Middle => Mode::Panning { last: pos },
             Button::Right => Mode::Idle,
@@ -113,11 +143,18 @@ impl Session {
                 };
                 self.hovered_port = hovered;
             }
-            Mode::Pressed { start, hit } => {
+            Mode::Pressed {
+                start,
+                hit,
+                connect,
+            } => {
                 if pos.distance(start) < DRAG_THRESHOLD_PX {
                     return;
                 }
                 match hit {
+                    Some((ObjectId::Port(p), _)) if connect => {
+                        self.start_drag(DragSource::Cable { from: p }, now_s);
+                    }
                     Some((ObjectId::Device(d), at)) => {
                         let grab = self
                             .document()
@@ -221,6 +258,7 @@ impl Session {
         }
         self.preview = None;
         self.ghost = None;
+        self.cable_preview = None;
         self.mode = Mode::Dragging {
             source,
             grab_offset_u: 0,
@@ -258,6 +296,7 @@ impl Session {
     fn end_drag(&mut self, source: &DragSource, now_s: f64) {
         self.preview = None;
         self.ghost = None;
+        self.cable_preview = None;
         if source.is_port() {
             self.view.exit_port_mode(now_s);
         }
@@ -268,7 +307,9 @@ impl Session {
         let result = match source {
             DragSource::Device(d) => plan_remove_device(doc, *d),
             DragSource::Port { port, .. } => plan_remove_port(doc, *port),
-            DragSource::NewDevice { .. } | DragSource::NewPort { .. } => return,
+            DragSource::NewDevice { .. }
+            | DragSource::NewPort { .. }
+            | DragSource::Cable { .. } => return,
         };
         let _ = self.apply(result);
     }
@@ -283,7 +324,12 @@ impl Session {
     ) {
         self.preview = None;
         self.ghost = None;
+        self.cable_preview = None;
         if over_trash || !self.on_canvas(pos) {
+            return;
+        }
+        if let DragSource::Cable { from } = source {
+            self.update_cable_drag(*from, pos);
             return;
         }
         let ray = self.ray_at(pos);
@@ -341,6 +387,7 @@ impl Session {
                     }
                 }
             }
+            DragSource::Cable { .. } => unreachable!("handled above"),
             DragSource::NewPort { device, .. } | DragSource::Port { device, .. } => {
                 let core_source = match source {
                     DragSource::NewPort { name, .. } => PortSource::New { name: name.clone() },
@@ -386,6 +433,48 @@ impl Session {
                         });
                     }
                 }
+            }
+        }
+    }
+}
+
+impl Session {
+    /// Over a port that `from` can connect to, previews the planned cable; over a port that
+    /// cannot take it, a red cable to that port; anywhere else, a loose cable to the pointer.
+    fn update_cable_drag(&mut self, from: PortId, pos: Vec2) {
+        let ray = self.ray_at(pos);
+        let doc = self.document();
+        let limits = &self.limits;
+        let Some(start) = port_anchor(doc, limits, from) else {
+            return;
+        };
+        let hit = pick_hit(doc, limits, &ray);
+        let target = match hit {
+            Some((ObjectId::Port(p), _)) => Some(p),
+            _ => None,
+        };
+        enum Outcome {
+            Connect(Plan),
+            /// Where the drawn cable ends, and whether releasing there would be accepted.
+            Loose(Option<(Vec3, bool)>),
+        }
+        let outcome = match hit {
+            Some((ObjectId::Port(p), _)) if p != from => match plan_connect(doc, limits, from, p) {
+                Ok(plan) => Outcome::Connect(plan),
+                Err(_) => Outcome::Loose(port_anchor(doc, limits, p).map(|end| (end, false))),
+            },
+            Some((_, point)) => Outcome::Loose(Some((point, true))),
+            None => Outcome::Loose(ray.hit_plane_z(0.0).map(|point| (point, true))),
+        };
+        self.hovered_port = target;
+        match outcome {
+            Outcome::Connect(plan) => self.preview = Some(plan),
+            Outcome::Loose(end) => {
+                self.cable_preview = end.map(|(to, valid)| CablePreview {
+                    from: start,
+                    to,
+                    valid,
+                });
             }
         }
     }

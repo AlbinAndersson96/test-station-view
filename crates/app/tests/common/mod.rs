@@ -2,9 +2,9 @@
 
 use glam::{Vec2, Vec3};
 use tsv_app::session::Session;
-use tsv_core::ids::{DeviceId, PortId, RackId};
+use tsv_core::ids::{CableId, DeviceId, PortId, RackId};
 use tsv_core::limits::Limits;
-use tsv_core::model::{Device, DeviceKind, Document, Port, PortKind, Rack, Rgb};
+use tsv_core::model::{Cable, Device, DeviceKind, Document, Port, PortKind, Rack, Rgb};
 use tsv_core::name::{DocumentName, Name};
 
 pub const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
@@ -57,6 +57,7 @@ pub fn doc(racks: Vec<Rack>) -> Document {
     Document {
         name: DocumentName::parse("Test").unwrap(),
         racks,
+        cables: Vec::new(),
     }
 }
 
@@ -80,4 +81,14 @@ pub fn settle(s: &mut Session, now: &mut f64) {
 /// Canvas position of a world point.
 pub fn px(s: &Session, p: Vec3) -> Vec2 {
     s.world_to_pixel(p)
+}
+
+pub fn cable(n: &str, a: PortId, b: PortId) -> Cable {
+    Cable {
+        id: CableId::new(),
+        name: name(n),
+        color: Rgb::CABLE_BLUE,
+        a,
+        b,
+    }
 }

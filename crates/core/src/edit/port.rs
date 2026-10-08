@@ -1,3 +1,4 @@
+use crate::edit::cable::drop_dangling_cables;
 use crate::edit::{ObjectId, Plan, Rejection};
 use crate::ids::{DeviceId, PortId};
 use crate::limits::Limits;
@@ -90,6 +91,7 @@ pub fn plan_remove_port(doc: &Document, port_id: PortId) -> Result<Plan, Rejecti
     let (ri, di, pi) = doc.port_location(port_id).ok_or(Rejection::NotFound)?;
     let mut document = doc.clone();
     document.racks[ri].devices[di].ports.remove(pi);
+    drop_dangling_cables(&mut document);
     Ok(Plan {
         document,
         subject: None,
